@@ -7,6 +7,8 @@ last_verified: 2026-09-09
 
 Model 4 training begins with two separate commands. Resolution composes maintained scientific choices with real filesystem paths. Preflight then reads and validates the complete train and validation inputs without creating a run directory or changing any file.
 
+The command-line pipeline supports the Python 3.9 environment currently used by the lxplus virtual environment.
+
 ## Why there are two commands
 
 `resolve_model4_training_config.py` produces one immutable YAML for exactly one run. It reads row counts from the selected dataset config, so 2022, 2023, 2024, and 2025 may all have different numbers of events. It never hard-codes the 2025 count.

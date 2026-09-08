@@ -7,7 +7,7 @@ import os
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 from ..manifest import write_json_atomic
 from .checkpoints import (
@@ -19,8 +19,8 @@ from .checkpoints import (
 )
 from .state import EarlyStoppingState, ResumeReport, TrainingPolicy
 
-EpochResult = float | Mapping[str, float]
-TrainEpoch = Callable[[Any, Any, Any | None, int], EpochResult]
+EpochResult = Union[float, Mapping[str, float]]
+TrainEpoch = Callable[[Any, Any, Optional[Any], int], EpochResult]
 ValidateEpoch = Callable[[Any, int], EpochResult]
 
 
