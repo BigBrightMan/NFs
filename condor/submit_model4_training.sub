@@ -1,0 +1,22 @@
+universe = vanilla
+initialdir = $(project)
+executable = $(project)/condor/run_model4_training.sh
+arguments = $(config) $(activate) $(project)
+
+request_cpus = $(cpus:4)
+request_memory = $(memory:12GB)
+request_disk = $(disk:10GB)
+request_gpus = $(gpus:1)
+
+getenv = True
+should_transfer_files = NO
+stream_output = True
+stream_error = True
+
+output = $(output_root)/condor_logs/$(log_subdir)/$(run_name)_$(ClusterId)_$(ProcId).out
+error = $(output_root)/condor_logs/$(log_subdir)/$(run_name)_$(ClusterId)_$(ProcId).err
+log = $(output_root)/condor_logs/$(log_subdir)/$(run_name)_$(ClusterId).log
+
++MaxRuntime = $(maximum_runtime:604800)
+
+queue 1

@@ -8,7 +8,7 @@ This project is being extracted incrementally from the existing `FS` repository.
 
 Foundation and controlled migration. The existing `FS` repository and `FS_output` remain canonical until a complete NFs vertical slice reproduces the frozen reference evidence.
 
-Implemented foundations now include numerically verified composition-based preprocessing A/B/C, an FS-equivalent RQ-spline backend, a fail-closed ROOT adapter, end-to-end Model 4 weighted-NLL training, non-destructive full-state checkpoint branching, a real training-config resolver, and a read-only full-data preflight. See [Model 4 Training Vertical Slice](wiki/project/Model%204%20Training%20Vertical%20Slice.md), [Training Resolution and Preflight](wiki/project/Training%20Resolution%20and%20Preflight.md), and [Epoch 450 Branched Resume](wiki/experiments/Epoch%20450%20Branched%20Resume.md).
+Implemented foundations now include numerically verified composition-based preprocessing A/B/C, an FS-equivalent RQ-spline backend, a fail-closed ROOT adapter, end-to-end Model 4 weighted-NLL training, non-destructive full-state checkpoint branching, a real training-config resolver, a read-only full-data preflight, and one-job EOS-backed HTCondor submission. See [Model 4 Training Vertical Slice](wiki/project/Model%204%20Training%20Vertical%20Slice.md), [Training Resolution and Preflight](wiki/project/Training%20Resolution%20and%20Preflight.md), and [Epoch 450 Branched Resume](wiki/experiments/Epoch%20450%20Branched%20Resume.md).
 
 ## Layout
 

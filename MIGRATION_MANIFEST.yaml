@@ -98,6 +98,14 @@ components:
     verification:
       - tests/test_training_config_preflight.py
 
+  model4_condor_submission:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/execution/condor.py
+    status: verified
+    design: one_preflighted_config_one_eos_backed_gpu_job
+    verification:
+      - tests/test_condor_submission.py
+
   nf_factory:
     source: src/flashsim/nf.py
     source_sha256: b9f5d2cda133fbd8abd725eb78b7cb7d271782a2a251c58a2be989f1369bea21

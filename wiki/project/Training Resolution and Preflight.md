@@ -61,6 +61,8 @@ python scripts/train_model4.py \
   --config /Users/bigbirght/Documents/Hermis/NFs_output/resolved_configs/2025_B_base_smoke_seed42.yaml
 ```
 
+Run that direct command only in a suitable local or allocated GPU environment. On CERN, use the Condor submitter below.
+
 ## CERN pattern
 
 Assuming the clean repository is `/eos/user/t/tanansub/SWAN_projects/NFs` and outputs are `/eos/user/t/tanansub/SWAN_projects/NFs_output`:
@@ -83,6 +85,38 @@ python scripts/resolve_model4_training_config.py \
 python scripts/preflight_model4_training.py \
   --config /eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/2023_B_base_production_seed42.yaml
 ```
+
+Review a CERN submission without sending it:
+
+```bash
+module load lxbatch/eossubmit
+
+python scripts/submit_model4_training.py \
+  --config /eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/2025_B_base_smoke_seed42.yaml \
+  --dry-run
+```
+
+The dry run repeats the complete read-only preflight and prints the exact `condor_submit` command. It creates neither a log directory nor a run directory.
+
+Submit exactly one GPU job:
+
+```bash
+module load lxbatch/eossubmit
+
+python scripts/submit_model4_training.py \
+  --config /eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/2025_B_base_smoke_seed42.yaml
+```
+
+The default request is one GPU, four CPUs, 12 GB of memory, 10 GB of disk, and at most seven days. Resource flags can be overridden explicitly. The worker activates `venvBBfs`, checks required dependencies and the GPU, repeats preflight against the worker-visible EOS files, then starts `train_model4.py`.
+
+Logs for this example are written below:
+
+```text
+/eos/user/t/tanansub/SWAN_projects/NFs_output/condor_logs/
+  campaigns/fluka2025_muons_horizontal/model4/preprocessing_B/smoke/
+```
+
+Use `condor_q` to see queued/running jobs. A dry run does not add a job to `condor_q`.
 
 The production default is 500 epochs, early stopping disabled, and a numbered full-state checkpoint every 50 epochs. `best_model.pt` is still updated whenever validation NLL improves.
 
