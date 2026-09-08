@@ -55,6 +55,7 @@ def main() -> None:
                 "run_id": submission.run_name,
                 "run_directory": str(submission.run_directory),
                 "log_directory": str(submission.log_directory),
+                "live_log_directory": str(submission.live_log_directory),
                 "dry_run": args.dry_run,
             },
             indent=2,
@@ -67,6 +68,7 @@ def main() -> None:
     if shutil.which("condor_submit") is None:
         raise RuntimeError("condor_submit is unavailable")
     submission.log_directory.mkdir(parents=True, exist_ok=True)
+    submission.live_log_directory.mkdir(parents=True, exist_ok=True)
     subprocess.run(submission.command, cwd=project, check=True)
 
 

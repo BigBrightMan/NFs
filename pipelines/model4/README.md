@@ -5,3 +5,5 @@ This directory contains declarative orchestration only. Scientific implementatio
 Stage files declare contracts and selection authority. Plan files choose a subset of stages and trials without editing generated job configurations.
 
 The held-out test cannot run until model selection has produced a frozen `selected_model.json`.
+
+The implemented baseline entry point is `scripts/create_model4_baseline_configs.py`. It resolves the maintained `baseline_only.yaml` intent into environment-specific immutable configs for selected years and preprocessing A/B/C. Each config must pass `scripts/preflight_model4_training.py` and is submitted individually with `scripts/submit_model4_training.py`.

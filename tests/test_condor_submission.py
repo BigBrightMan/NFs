@@ -50,6 +50,7 @@ def test_condor_submission_is_pure_and_points_to_eos_style_outputs(
     assert "gpus=1" in submission.command
     assert submission.run_name == "fs25-m4-B-base-s42-deadbeef"
     assert not submission.log_directory.exists()
+    assert not submission.live_log_directory.exists()
     assert not submission.run_directory.exists()
 
 
@@ -81,3 +82,13 @@ def test_submit_description_avoids_unsupported_cern_streaming() -> None:
     lowered = submit.lower()
     assert "stream_output" not in lowered
     assert "stream_error" not in lowered
+    assert "$(output_root) $(log_subdir) $(run_name)" in submit
+
+
+def test_worker_writes_custom_live_log_without_condor_streaming() -> None:
+    launcher = (
+        Path(__file__).resolve().parents[1] / "condor/run_model4_training.sh"
+    ).read_text()
+    assert "condor_logs/live" in launcher
+    assert "tee -a" in launcher
+    assert "live_log" in launcher

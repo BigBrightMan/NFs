@@ -37,6 +37,7 @@ class CondorSubmission:
     command: tuple[str, ...]
     run_name: str
     log_directory: Path
+    live_log_directory: Path
     run_directory: Path
 
 
@@ -107,6 +108,7 @@ def build_condor_submission(
     stage = _safe(experiment["stage"], name="stage")
     log_subdir = f"campaigns/{dataset_id}/model4/preprocessing_{pipeline}/{stage}"
     log_directory = output_root / "condor_logs" / log_subdir
+    live_log_directory = output_root / "condor_logs/live" / log_subdir
 
     command = (
         "condor_submit",
@@ -127,5 +129,6 @@ def build_condor_submission(
         command=command,
         run_name=run_name,
         log_directory=log_directory,
+        live_log_directory=live_log_directory,
         run_directory=run_directory,
     )

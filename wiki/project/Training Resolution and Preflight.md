@@ -67,6 +67,29 @@ Run that direct command only in a suitable local or allocated GPU environment. O
 
 Assuming the clean repository is `/eos/user/t/tanansub/SWAN_projects/NFs` and outputs are `/eos/user/t/tanansub/SWAN_projects/NFs_output`:
 
+Create the complete baseline config matrix for 2022–2025 and preprocessing A/B/C:
+
+```bash
+python scripts/create_model4_baseline_configs.py \
+  --environment cern \
+  --output-root /eos/user/t/tanansub/SWAN_projects/NFs_output \
+  --config-output-directory /eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs \
+  --stage smoke \
+  --pipelines A B C \
+  --training-seed 42 \
+  --skip-existing
+```
+
+This creates or verifies 12 resolved configs: four dataset years multiplied by three preprocessing pipelines. It uses the t-clean dataset for 2022 and reads each CERN prepared-data path from its maintained dataset config. `--skip-existing` accepts an existing config only when its dataset, pipeline, stage, base trial, and seed match the request. Config creation does not submit or train anything.
+
+To create only the three 2025 baselines, add:
+
+```text
+--dataset-ids fluka2025_muons_horizontal
+```
+
+Resolved configs are generated on lxplus rather than committed to Git because they contain environment-specific absolute paths and hashes of the actual fitted artifacts.
+
 ```bash
 cd /eos/user/t/tanansub/SWAN_projects/NFs
 source /eos/user/t/tanansub/venvBBfs/bin/activate
@@ -118,7 +141,14 @@ Logs for this example are written below:
 
 Use `condor_q` to see queued/running jobs. A dry run does not add a job to `condor_q`.
 
-CERN no longer supports streaming job stdout/stderr from the worker. The `.out` and `.err` files therefore appear through normal Condor output handling rather than live streaming; this does not affect training or checkpoint writing.
+CERN no longer supports Condor `stream_output`/`stream_error`. NFs therefore keeps the normal `.out`, `.err`, and scheduler logs but implements a separate worker-side live log written directly to EOS with `tee`. The live-log directory is printed before submission and has this form:
+
+```text
+/eos/user/t/tanansub/SWAN_projects/NFs_output/condor_logs/live/
+  campaigns/<dataset>/model4/preprocessing_<A|B|C>/<stage>/
+```
+
+List the resulting `*.live.log` file and follow it with `tail -f`. This custom log does not use the schedd streaming feature that CERN removed.
 
 The production default is 500 epochs, early stopping disabled, and a numbered full-state checkpoint every 50 epochs. `best_model.pt` is still updated whenever validation NLL improves.
 

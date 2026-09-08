@@ -1,7 +1,7 @@
 universe = vanilla
 initialdir = $(project)
 executable = $(project)/condor/run_model4_training.sh
-arguments = $(config) $(activate) $(project)
+arguments = $(config) $(activate) $(project) $(output_root) $(log_subdir) $(run_name)
 
 request_cpus = $(cpus:4)
 request_memory = $(memory:12GB)
