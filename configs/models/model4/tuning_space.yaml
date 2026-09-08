@@ -1,0 +1,73 @@
+version: 1
+base: configs/models/model4/baseline.yaml
+
+trials:
+  - trial_id: base
+    display_name: Baseline T08 H064 B02
+    enabled: true
+    tags: [baseline]
+    overrides: {}
+
+  - trial_id: lr_lo
+    display_name: Learning rate 2e-4
+    enabled: true
+    tags: [learning_rate]
+    overrides:
+      training:
+        learning_rate: 0.0002
+
+  - trial_id: lr_hi
+    display_name: Learning rate 1e-3
+    enabled: true
+    tags: [learning_rate]
+    overrides:
+      training:
+        learning_rate: 0.001
+
+  - trial_id: t06
+    display_name: Six transforms
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        num_transforms: 6
+
+  - trial_id: t10
+    display_name: Ten transforms
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        num_transforms: 10
+
+  - trial_id: h32
+    display_name: Hidden width 32
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        hidden_features: 32
+
+  - trial_id: h96
+    display_name: Hidden width 96
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        hidden_features: 96
+
+  - trial_id: b01
+    display_name: One residual block
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        num_blocks: 1
+
+  - trial_id: b03
+    display_name: Three residual blocks
+    enabled: true
+    tags: [capacity]
+    overrides:
+      model:
+        num_blocks: 3

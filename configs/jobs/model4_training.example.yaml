@@ -1,0 +1,63 @@
+dataset:
+  dataset_id: fluka2025_muons_horizontal
+  split_id: REQUIRED_FROZEN_SPLIT_ID
+  dataset_fingerprint: REQUIRED_DATASET_FINGERPRINT
+
+preprocessing:
+  id: A
+  fit_split: train
+  artifact: /absolute/path/to/NFs_data/preprocessor_A.json
+  artifact_sha256: REQUIRED_SHA256
+
+data:
+  tree_name: nt
+  # drop_z_E: z and E are reconstructed downstream, so neither is an NF input.
+  feature_order: [x, y, pz, px, py, t]
+  split_manifest_path: /absolute/path/to/split_manifest.json
+  train:
+    model_space_path: /absolute/path/to/train_preprocessed.root
+    raw_weight_path: /absolute/path/to/train_rawfeature.root
+    expected_rows: 355516
+  validation:
+    model_space_path: /absolute/path/to/validation_preprocessed.root
+    raw_weight_path: /absolute/path/to/validation_rawfeature.root
+    expected_rows: 76183
+
+model:
+  family: model4
+  architecture: rq_spline
+  ablation: drop_ze
+  objective: weighted_nll
+  weight_is_input_feature: false
+  num_transforms: 8
+  hidden_features: 64
+  num_blocks: 2
+  num_bins: 8
+  tail_bound: 8.0
+
+training:
+  learning_rate: 0.0005
+  weight_decay: 0.000001
+  batch_size: 2048
+  maximum_epochs: 500
+  checkpoint_interval: 50
+  early_stopping:
+    enabled: false
+    patience: 20
+  scheduler:
+    type: ReduceLROnPlateau
+    factor: 0.5
+    patience: 5
+  mixed_precision: false
+  gradient_clip_norm: 5.0
+  seed: 42
+  device: auto
+
+output:
+  run_directory: /absolute/new/path/in/NFs_output
+
+# For a branch resume, add this section and keep output.run_directory new:
+# resume:
+#   mode: branch
+#   source_checkpoint: /absolute/original/checkpoints/epoch_0450_model.pt
+#   expected_epoch: 450

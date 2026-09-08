@@ -1,0 +1,6 @@
+stage: preflight
+purpose: Validate identity, provenance, inputs, and output collisions before work starts.
+inputs: [campaign_config, dataset_manifest, required_upstream_artifacts]
+outputs: [preflight_report]
+selection_authority: none
+fail_closed: true

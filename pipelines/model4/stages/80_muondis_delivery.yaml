@@ -1,0 +1,6 @@
+stage: muondis_delivery
+purpose: Produce guarded w1 and global_c ROOT files with delivery provenance.
+inputs: [selected_model, normalization_reference, train_fitted_guard]
+outputs: [w1_root, global_c_root, delivery_manifest, readme]
+selection_authority: none
+requires_frozen_selection: true

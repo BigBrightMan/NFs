@@ -1,0 +1,6 @@
+stage: prepare_data
+purpose: Select rows, create the immutable split, and fit preprocessing on train.
+inputs: [source_root, dataset_config]
+outputs: [dataset_manifest, split_manifest, raw_splits, fitted_preprocessors]
+selection_authority: dataset_creation_only
+fit_split: train

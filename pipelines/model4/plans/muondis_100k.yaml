@@ -1,0 +1,7 @@
+plan_id: muondis_100k
+stages: [preflight, muondis_delivery]
+requires_frozen_selection: true
+number_events: 100000
+generation_seed: 3556
+guard: guard_reject_v2
+weight_exports: [w1, global_c]

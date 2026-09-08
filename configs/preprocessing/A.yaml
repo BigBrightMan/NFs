@@ -1,0 +1,9 @@
+preprocessing_id: A
+display_name: Collaborator-style feature transforms
+fit_split: train
+transforms:
+  spatial: minmax_logit
+  transverse_momentum: signed_log1p
+  energy_longitudinal_momentum: box_cox
+  time: identity
+  final: standardize

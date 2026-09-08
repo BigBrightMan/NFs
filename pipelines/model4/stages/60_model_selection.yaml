@@ -1,0 +1,6 @@
+stage: model_selection
+purpose: Apply hard gates and freeze the validation-selected winner.
+inputs: [generated_validation_metrics, domain_reports]
+outputs: [selected_model]
+selection_authority: final_validation_selection
+test_set_used: false

@@ -1,0 +1,6 @@
+plan_id: tuning_abc
+stages: [preflight, train, training_validation]
+selection:
+  preprocessing: [A, B, C]
+  enabled_trials: true
+  training_seeds: [42]

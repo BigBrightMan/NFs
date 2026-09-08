@@ -1,0 +1,6 @@
+plan_id: final_test
+stages: [preflight, final_test]
+requires_frozen_selection: true
+generation_seed: 2556
+reference_split: test
+tuning_allowed: false

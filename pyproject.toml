@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashsim-nf"
+version = "0.1.0"
+description = "Clean Model 4 weighted-density normalizing-flow pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+train = [
+  "torch>=2.0",
+  "nflows>=0.14",
+  "uproot>=5.0",
+]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,27 @@
+comparison_id: train_vs_all_clean_v2
+
+robust_reference:
+  weighting: original_fluka_weight
+  transform_space: feature_specific
+  iqr_multiplier: 3.0
+  lower_quantile: 0.0001
+  upper_quantile: 0.9999
+  bound_rule: wider_of_weighted_iqr_fence_and_weighted_quantiles
+  raw_minmax_used: false
+
+roles:
+  train_ref:
+    fit_scope: train
+    selection_allowed: true
+    usage: generated_validation
+  all_ref:
+    fit_scope: [train, validation, test]
+    selection_allowed: false
+    usage: frozen_production_and_muondis_only
+
+comparison:
+  use_same_generated_proposals: true
+  report_row_fraction: true
+  report_weighted_fraction: true
+  report_per_feature_reasons: true
+  report_rejection_overlap: true

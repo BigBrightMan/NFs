@@ -1,0 +1,15 @@
+dataset_id: fluka2024_muons_up
+year: 2024
+status: legacy_reference
+selected_rows: 770065
+dataset_fingerprint: 6f05533be06fb710e8dba821bb86ee237a6dc3faf3f82ef46fb0ab8702cf3903
+split:
+  seed: 42
+  id: rowwise_0.70_0.15_0.15_seed42_6f05533be06f_9c9ed83b0080
+  counts:
+    train: 539045
+    validation: 115510
+    test: 115510
+legacy_prepared_paths:
+  local: /Users/bigbirght/Documents/Hermis/FS_output/campaigns/fluka2024_muons_up/prepared_data
+  cern: /eos/user/t/tanansub/SWAN_projects/FS_output/campaigns/fluka2024_muons_up/prepared_data

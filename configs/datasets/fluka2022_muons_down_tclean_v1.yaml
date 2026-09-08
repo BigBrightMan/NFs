@@ -1,0 +1,23 @@
+dataset_id: fluka2022_muons_down_tclean_v1
+year: 2022
+status: legacy_reference
+selected_rows: 1544491
+dataset_fingerprint: d4833a7c8f94d8d4fa1f11565673b54c1db96bb36016aec6109c742e6adcd13b
+split:
+  seed: 42
+  id: rowwise_0.70_0.15_0.15_seed42_d4833a7c8f94_0225ac82c17d
+  counts:
+    train: 1081144
+    validation: 231673
+    test: 231674
+legacy_prepared_paths:
+  local: /Users/bigbirght/Documents/Hermis/FS_output/campaigns/fluka2022_muons_down_tclean_v1/prepared_data
+  cern: /eos/user/t/tanansub/SWAN_projects/FS_output/campaigns/fluka2022_muons_down_tclean_v1/prepared_data
+selection:
+  explicit_exclusions:
+    - label: catastrophic_t_single_row_2022
+      run: 960
+      event: 50823
+      id: 13
+      generation: 4
+      expected_matches: 1

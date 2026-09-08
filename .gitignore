@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+.DS_Store
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Scientific artifacts belong in NFs_data or NFs_output, never Git.
+*.root
+*.pt
+*.pth
+*.ckpt
+NFs_data/
+NFs_output/
+generated_configs/

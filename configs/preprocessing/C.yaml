@@ -1,0 +1,11 @@
+preprocessing_id: C
+display_name: Robust transforms
+fit_split: train
+transforms:
+  spatial: median_iqr_asinh
+  transverse_momentum: zero_centered_iqr_asinh
+  energy: shifted_log_median_iqr_asinh
+  energy_shift_gev: 10.0
+  longitudinal_momentum: log_median_iqr_asinh
+  time: identity
+  final: standardize

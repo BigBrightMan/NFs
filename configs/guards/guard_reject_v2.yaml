@@ -1,0 +1,19 @@
+guard_id: guard_reject_v2
+fit_split: train
+policy:
+  robust_mode: reject
+  mass_shell_mode: reject
+  scoring_plane_mode: reject
+  detector_mode: reject
+  maximum_rejection_fraction: 0.05
+
+# Detector x/y bounds are dataset-specific and must be supplied by an
+# authoritative campaign configuration. z is constrained by the scoring plane.
+requires_dataset_detector_bounds: [x, y]
+z_constraint: train_fitted_scoring_plane
+
+reference_scope_policy:
+  selection_guard: train_ref
+  frozen_production_guard: all_ref
+  production_guard_selection_allowed: false
+  comparison_config: configs/guards/reference_scope_comparison.yaml

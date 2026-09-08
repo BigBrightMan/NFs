@@ -1,0 +1,155 @@
+version: 1
+created: 2026-09-08
+
+source:
+  repository: BigBrightMan/FS_github
+  local_path: /Users/bigbirght/Documents/Hermis/FS
+  branch: flashsim-model1-model2
+  commit: 9df6e2decb47eedd9e832d607b4c088eefa9f796
+
+policy:
+  strategy: controlled_extraction
+  scientific_code: port_with_equivalence_tests
+  orchestration: redesign
+  legacy_model1_model2: remain_in_fs
+  existing_outputs: do_not_move
+
+components:
+  weighted_density_objective:
+    source: src/flashsim/model4.py
+    source_sha256: 52e9eeb06063afe0ca41e03a9fa2e97d1ce3b4cc135408259b5a3ba6889eb272
+    destination: src/flashsim_nf/models/model4/objective.py
+    status: verified
+    verification:
+      - tests/test_model4_objective_equivalence.py
+
+  model4_generation:
+    source: src/flashsim/model4_generation.py
+    source_sha256: 8428f2798c366e6831d96f85a727b325251d90a88ecbb895c0ba67b34bba69b4
+    destination: src/flashsim_nf/generation/model4.py
+    status: planned
+
+  model4_evaluation:
+    source: src/flashsim/model4_evaluation.py
+    source_sha256: b2eb3b746027925f40abf5f7d77bccb7f1ec9d42189eae2ebe0a2168ab572684
+    destination: src/flashsim_nf/evaluation/
+    status: planned
+
+  generation_guard:
+    source: src/flashsim/generation_guard.py
+    source_sha256: 1343149c4096319b147a3214aecae8d0c164ea5ed06b5d8cfca1744214c02c88
+    destination: src/flashsim_nf/guards/
+    status: planned
+
+  robust_reference_guard_comparison:
+    source: src/flashsim/generation_guard.py
+    destination: src/flashsim_nf/guards/reference.py
+    status: adapted
+    scope: weighted_robust_reference_bounds_only
+    design: train_selection_guard_vs_all_clean_production_guard
+    verification:
+      - tests/test_reference_guards.py
+
+  physics_reconstruction:
+    source: src/flashsim/feature_ablation.py
+    source_sha256: 218497f6a0b201abdb00dd765716204bcecf50c64e08ca79f641541c2773c9de
+    destination: src/flashsim_nf/reconstruction/drop_z_e.py
+    status: planned
+
+  preprocessing:
+    source: src/flashsim/preprocessing.py
+    source_sha256: fb29018b7ff0ffed2e7d34444f5f85cfa3e307fa05943b3a02d580d685d741cf
+    destination: src/flashsim_nf/preprocessing/
+    status: verified
+    design: composition_of_feature_transform_chains
+    verification:
+      - tests/test_preprocessing_equivalence.py
+
+  restart_safe_training:
+    source: src/flashsim/train.py
+    source_sha256: 9b2e157263728092d55e42377e35ae832231cea04f75232cd9353cf4983d31d9
+    destination: src/flashsim_nf/training/
+    status: adapted
+    design: callback_driven_branched_training_session
+    verification:
+      - tests/test_branched_resume.py
+
+  controlled_tuning_planner:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/experiments/tuning.py
+    status: verified
+    design: immutable_config_hashed_fresh_runs
+    verification:
+      - tests/test_tuning_plan.py
+
+  real_training_config_resolver:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/experiments/training_config.py
+    status: verified
+    design: path_explicit_immutable_dataset_driven_resolution
+    verification:
+      - tests/test_training_config_preflight.py
+
+  read_only_training_preflight:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/training/preflight.py
+    status: verified
+    design: fail_closed_full_train_validation_scan_without_output_mutation
+    verification:
+      - tests/test_training_config_preflight.py
+
+  nf_factory:
+    source: src/flashsim/nf.py
+    source_sha256: b9f5d2cda133fbd8abd725eb78b7cb7d271782a2a251c58a2be989f1369bea21
+    destination: src/flashsim_nf/models/flows/
+    status: verified
+    design: composed_rq_spline_backend
+    verification:
+      - tests/test_flow_backend_equivalence.py
+
+  model4_training_vertical_slice:
+    source: src/flashsim/train.py
+    destination: src/flashsim_nf/training/model4.py
+    status: adapted
+    design: weighted_nll_root_to_checkpoint_training
+    verification:
+      - tests/test_model4_training_vertical.py
+
+  data_contract:
+    source: src/flashsim/data_contract.py
+    source_sha256: 848bb47c86e773dad24a12b1b11e88f45d888f3142573cf6df55bad52f28fffb
+    destination: src/flashsim_nf/contracts/data.py
+    status: planned
+
+  provenance:
+    source: src/flashsim/provenance.py
+    source_sha256: 516b6028bd38743ec9939fa0e2d98b5f55e3141a580340888d24c88cadf5dbf8
+    destination: src/flashsim_nf/contracts/provenance.py
+    status: planned
+
+  root_io:
+    source: src/flashsim/io.py
+    source_sha256: 53fde40ba89b1c27e6fd25497316b102086a7c61fa3dcffd166abf22d93fc327
+    destination: src/flashsim_nf/data/root.py
+    status: adapted
+    design: aligned_model_space_and_raw_weight_adapter
+    verification:
+      - tests/test_root_adapter.py
+
+reference_selections:
+  fluka2022_muons_down_tclean_v1:
+    selected_model_sha256: d781a37dd21c33150cc2539317e471fbf1efc12d788938f81e29ac38a7ba8b55
+    pipeline: A
+    trial: baseline
+  fluka2023_muons_down:
+    selected_model_sha256: da985d5eafa19efd330f7cefb345bc6c3b36faee3b57b9dc76497623d6d1c4d7
+    pipeline: A
+    trial: baseline
+  fluka2024_muons_up:
+    selected_model_sha256: 30b8b4e8b5235a46a99db9bf0c63d5b59b44ceae53156d1dfaee0ea347db8bb2
+    pipeline: A
+    trial: baseline
+  fluka2025_muons_horizontal:
+    selected_model_sha256: 61ee5a344bcfc426ffecd1a223a63d3962dfcba0661863e1661f39a6b525b36c
+    pipeline: A
+    trial: lr_high

@@ -1,0 +1,12 @@
+pipeline_id: model4_weighted_density
+version: 1
+stages:
+  - preflight
+  - prepare_data
+  - eda
+  - train
+  - training_validation
+  - generated_validation
+  - model_selection
+  - final_test
+  - muondis_delivery

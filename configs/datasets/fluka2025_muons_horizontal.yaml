@@ -1,0 +1,15 @@
+dataset_id: fluka2025_muons_horizontal
+year: 2025
+status: legacy_reference
+selected_rows: 507882
+dataset_fingerprint: 1a1cff4e8711efdf9a4a9307639db74974fb86f43ee64eba4b523677a1ec6806
+split:
+  seed: 42
+  id: rowwise_0.70_0.15_0.15_seed42_1a1cff4e8711_616de4fc8351
+  counts:
+    train: 355516
+    validation: 76183
+    test: 76183
+legacy_prepared_paths:
+  local: /Users/bigbirght/Documents/Hermis/FS_output/prepared_data
+  cern: /eos/user/t/tanansub/SWAN_projects/FS_output/prepared_data

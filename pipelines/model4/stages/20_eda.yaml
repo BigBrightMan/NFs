@@ -1,0 +1,6 @@
+stage: eda
+purpose: Validate weighted and unweighted data and preprocessing behavior.
+inputs: [raw_splits, fitted_preprocessors]
+outputs: [eda_report, statistics, plots]
+selection_authority: data_contract_review
+test_tuning_allowed: false

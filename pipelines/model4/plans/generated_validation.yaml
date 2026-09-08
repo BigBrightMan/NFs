@@ -1,0 +1,4 @@
+plan_id: generated_validation
+stages: [preflight, generated_validation, model_selection]
+generation_seed: 1556
+reference_split: validation

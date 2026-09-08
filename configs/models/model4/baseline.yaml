@@ -1,0 +1,19 @@
+model:
+  family: model4
+  architecture: rq_spline
+  ablation: drop_ze
+  objective: weighted_nll
+  weight_is_input_feature: false
+  num_transforms: 8
+  hidden_features: 64
+  num_blocks: 2
+
+training:
+  learning_rate: 0.0005
+  batch_size: 2048
+  maximum_epochs: 500
+  early_stopping:
+    enabled: false
+    patience: 20
+  checkpoint_interval: 50
+  seed: 42

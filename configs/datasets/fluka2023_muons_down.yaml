@@ -1,0 +1,15 @@
+dataset_id: fluka2023_muons_down
+year: 2023
+status: legacy_reference
+selected_rows: 1213877
+dataset_fingerprint: 2fbec082169113029f77d76a29043363bc771550fe88ada5dbe1e41122598bfd
+split:
+  seed: 42
+  id: rowwise_0.70_0.15_0.15_seed42_2fbec0821691_613ffb6d7608
+  counts:
+    train: 849713
+    validation: 182082
+    test: 182082
+legacy_prepared_paths:
+  local: /Users/bigbirght/Documents/Hermis/FS_output/campaigns/fluka2023_muons_down/prepared_data
+  cern: /eos/user/t/tanansub/SWAN_projects/FS_output/campaigns/fluka2023_muons_down/prepared_data

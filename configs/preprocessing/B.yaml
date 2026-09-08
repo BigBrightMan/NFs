@@ -1,0 +1,9 @@
+preprocessing_id: B
+display_name: Simple baseline transforms
+fit_split: train
+transforms:
+  spatial: identity
+  transverse_momentum: iqr_scaled_asinh
+  energy_longitudinal_momentum: natural_log
+  time: identity
+  final: standardize

@@ -1,0 +1,7 @@
+stage: final_test
+purpose: Evaluate the frozen winner once on the held-out test.
+inputs: [selected_model, test_split, train_fitted_guard]
+outputs: [final_test_roots, metrics, plots]
+selection_authority: reporting_only
+requires_frozen_selection: true
+tuning_allowed: false

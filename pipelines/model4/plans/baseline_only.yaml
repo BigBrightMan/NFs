@@ -1,0 +1,6 @@
+plan_id: baseline_only
+stages: [preflight, train, training_validation]
+selection:
+  preprocessing: [A, B, C]
+  trial_ids: [base]
+  training_seeds: [42]

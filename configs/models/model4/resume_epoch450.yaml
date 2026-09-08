@@ -1,0 +1,14 @@
+resume:
+  mode: branch
+  expected_epoch: 450
+  source_checkpoint: REQUIRED_ABSOLUTE_PATH
+  destination_run: REQUIRED_NEW_ABSOLUTE_PATH
+  require_destination_absent: true
+  verify_source_sha256: true
+
+training:
+  maximum_epochs: 500
+  checkpoint_interval: 50
+  early_stopping:
+    enabled: false
+    patience: 20

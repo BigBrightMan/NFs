@@ -1,0 +1,12 @@
+dataset: configs/datasets/fluka2025_muons_horizontal.yaml
+year: 2025
+preprocessing_candidates: [A, B, C]
+model: configs/models/model4/baseline.yaml
+guard: configs/guards/guard_reject_v2.yaml
+selected_reference:
+  preprocessing: A
+  trial_id: lr_hi
+generation_seeds:
+  validation: 1556
+  final_test: 2556
+  muondis: 3556

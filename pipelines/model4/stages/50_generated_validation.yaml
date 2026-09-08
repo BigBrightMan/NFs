@@ -1,0 +1,6 @@
+stage: generated_validation
+purpose: Compare preprocessing finalists in common physical coordinates.
+inputs: [pipeline_finalists, validation_split, train_fitted_guard]
+outputs: [generated_validation_roots, metrics, plots, domain_reports]
+selection_authority: cross_preprocessing_selection
+reference_split: validation

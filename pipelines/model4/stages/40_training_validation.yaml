@@ -1,0 +1,6 @@
+stage: training_validation
+purpose: Diagnose optimization and rank trials within one preprocessing pipeline.
+inputs: [training_history, checkpoints]
+outputs: [training_diagnostics, within_pipeline_ranking]
+selection_authority: checkpoint_and_within_pipeline_hyperparameters
+reference_split: validation

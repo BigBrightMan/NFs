@@ -1,0 +1,15 @@
+stage: train
+purpose: Optimize Model 4 weighted NLL and save restart-safe checkpoints.
+inputs: [train_split, validation_split, fitted_preprocessor, resolved_config]
+outputs: [best_checkpoint, last_checkpoint, periodic_checkpoints, training_history]
+selection_authority: none
+objective: weighted_nll
+defaults:
+  maximum_epochs: 500
+  early_stopping:
+    enabled: false
+    patience: 20
+  checkpoint_interval: 50
+checkpoint_contract:
+  periodic_checkpoints_are_full_state: true
+  resume_requires_new_run_directory: true
