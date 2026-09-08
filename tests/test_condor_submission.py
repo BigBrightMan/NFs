@@ -71,3 +71,13 @@ def test_condor_submission_refuses_existing_run(tmp_path: Path) -> None:
 def test_model4_condor_resources_require_a_gpu() -> None:
     with pytest.raises(ValueError, match="at least one GPU"):
         CondorResources(gpus=0)
+
+
+def test_submit_description_avoids_unsupported_cern_streaming() -> None:
+    submit = (
+        Path(__file__).resolve().parents[1]
+        / "condor/submit_model4_training.sub"
+    ).read_text()
+    lowered = submit.lower()
+    assert "stream_output" not in lowered
+    assert "stream_error" not in lowered

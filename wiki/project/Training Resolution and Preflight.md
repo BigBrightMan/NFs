@@ -118,6 +118,8 @@ Logs for this example are written below:
 
 Use `condor_q` to see queued/running jobs. A dry run does not add a job to `condor_q`.
 
+CERN no longer supports streaming job stdout/stderr from the worker. The `.out` and `.err` files therefore appear through normal Condor output handling rather than live streaming; this does not affect training or checkpoint writing.
+
 The production default is 500 epochs, early stopping disabled, and a numbered full-state checkpoint every 50 epochs. `best_model.pt` is still updated whenever validation NLL improves.
 
 ## Safety and reruns

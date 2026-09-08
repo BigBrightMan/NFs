@@ -10,8 +10,6 @@ request_gpus = $(gpus:1)
 
 getenv = True
 should_transfer_files = NO
-stream_output = True
-stream_error = True
 
 output = $(output_root)/condor_logs/$(log_subdir)/$(run_name)_$(ClusterId)_$(ProcId).out
 error = $(output_root)/condor_logs/$(log_subdir)/$(run_name)_$(ClusterId)_$(ProcId).err
