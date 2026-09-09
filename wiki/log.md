@@ -31,3 +31,5 @@ See [[index|NFs Research Wiki]] and [[Current Research Status]].
   than inferring a detector definition from FLUKA sample extrema.
 - Added exact-count four-year validation config creation and matrix submission,
   then verified the complete repository with 62 passing tests.
+- Locked guard scope by stage: train-only for validation/test reporting and
+  all-clean-FLUKA for frozen MuonDIS production, with a four-year guard builder.

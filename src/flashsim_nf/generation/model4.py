@@ -24,6 +24,38 @@ FORMAT = "flashsim_nf.model4_generation_config"
 VERSION = 1
 
 
+def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
+    """Enforce the reference scope allowed for each scientific stage."""
+
+    if purpose in {"validation", "test"}:
+        expected = {
+            "fit_scope": "train",
+            "source_splits": ["train"],
+            "usage_role": "validation_and_selection",
+            "selection_allowed": True,
+        }
+        role = "train-reference"
+    elif purpose == "muondis":
+        expected = {
+            "fit_scope": "all_clean_splits",
+            "source_splits": ["train", "validation", "test"],
+            "usage_role": "production_only",
+            "selection_allowed": False,
+        }
+        role = "all-clean-FLUKA production"
+    else:  # pragma: no cover - guarded by the public resolver
+        raise ValueError(f"Unsupported generation purpose: {purpose}")
+    mismatches = {
+        key: {"expected": value, "observed": guard.get(key)}
+        for key, value in expected.items()
+        if guard.get(key) != value
+    }
+    if mismatches:
+        raise ValueError(
+            f"{purpose} requires the {role} guard; role mismatch: {mismatches}"
+        )
+
+
 def _sha256(path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -144,10 +176,7 @@ def resolve_generation_config(
         raise ValueError("Guard dataset fingerprint does not match the training run")
     if guard.get("split_id") != dataset["split_id"]:
         raise ValueError("Guard split ID does not match the training run")
-    if purpose == "validation" and not guard.get("selection_allowed", False):
-        raise ValueError(
-            "Generated-validation requires the train-fitted selection guard"
-        )
+    _validate_guard_role(guard, purpose=purpose)
     plane = fit_scoring_plane(training["data"]["train"]["raw_weight_path"])
     output = run / "samples" / purpose / f"generation_seed_{seed}" / "guard_reject_v2"
     if output.exists():
@@ -229,6 +258,8 @@ def _validate_config(config: dict[str, Any]) -> None:
     selection = config.get("frozen_selection")
     if selection and _sha256(selection["path"]) != selection["sha256"]:
         raise ValueError("Frozen-selection artifact SHA-256 mismatch")
+    guard = _read_json(Path(config["guard"]["artifact"]))
+    _validate_guard_role(guard, purpose=config["generation"]["purpose"])
 
 
 def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:

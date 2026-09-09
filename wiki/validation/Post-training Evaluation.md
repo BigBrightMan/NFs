@@ -79,6 +79,26 @@ another tuning round.
 
 ## Complete checkpoint-to-evaluation command
 
+Create or verify both reference guards for all four campaigns first:
+
+```bash
+python scripts/create_model4_reference_guards.py \
+  --environment cern \
+  --guard-root /eos/user/t/tanansub/SWAN_projects/NFs_data/guards \
+  --expected-count 4 \
+  --dry-run
+
+python scripts/create_model4_reference_guards.py \
+  --environment cern \
+  --guard-root /eos/user/t/tanansub/SWAN_projects/NFs_data/guards \
+  --expected-count 4
+```
+
+The command reads the frozen FLUKA train, validation, and test ROOT files. It
+writes `guard_train_ref.json` from train only and `guard_all_ref.json` from all
+three clean splits. Complete existing outputs are verified and skipped;
+incomplete or conflicting outputs stop the matrix before new work begins.
+
 For the completed four-year baseline matrix (A/B/C for each year), create the
 12 validation configs without editing generated YAML files by hand:
 
@@ -160,7 +180,7 @@ it through the same worker:
 python scripts/resolve_model4_selected_generation_config.py \
   --selection "$selected_model_json" \
   --purpose test \
-  --guard-artifact "$guard_all_ref" \
+  --guard-artifact "$guard_train_ref" \
   --output "$final_test_config"
 
 module load lxbatch/eossubmit
@@ -184,6 +204,12 @@ python scripts/submit_model4_post_training.py --config "$muondis_config"
 Default seeds are 1556 for generated validation, 2556 for final test, and 3556
 for MuonDIS. The final test compares with the frozen test split; MuonDIS
 `global_c` uses `sum(w)` from train+validation+test divided by 100,000.
+
+Guard roles are enforced in code. Generated-validation and final-test reporting
+must use the train-fitted guard, so validation/test values cannot define their
+own acceptance region. Frozen MuonDIS production must use the all-clean-FLUKA
+guard, which is the full-reference support requested for delivery. Passing the
+wrong artifact for a purpose is a hard error.
 
 Detector x/y bounds remain disabled in the resolved manifest until an
 authoritative campaign artifact is supplied; they are never inferred from an

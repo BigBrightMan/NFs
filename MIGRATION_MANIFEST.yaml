@@ -54,7 +54,7 @@ components:
     source_sha256: 1343149c4096319b147a3214aecae8d0c164ea5ed06b5d8cfca1744214c02c88
     destination: src/flashsim_nf/guards/
     status: adapted
-    design: train_reference_robust_guard_plus_hard_physics_contracts
+    design: purpose_locked_train_reference_and_all_fluka_production_guards_plus_hard_physics_contracts
     limitation: detector_xy_bounds_waiting_for_authoritative_campaign_artifact
     verification:
       - tests/test_reference_guards.py

@@ -8,9 +8,14 @@ last_verified: 2026-09-08
 Two weighted robust-reference guards are intentionally kept separate:
 
 - `guard_train_ref.json` is fitted on train only and may be used for generated-validation and selection.
-- `guard_all_ref.json` is fitted on clean train, validation, and test only after the method and model are frozen. It is marked `production_only` and `selection_allowed: false`.
+- `guard_all_ref.json` is fitted on clean train, validation, and test. It is
+  marked `production_only` and `selection_allowed: false`, and is activated only
+  after the method and model are frozen.
 
-The all-reference artifact cannot be used to improve a validation or test claim. It exists to stabilize the final production support used for MuonDIS.
+The all-reference artifact cannot be used to improve a validation or test
+claim. Generated-validation and final-test reporting both use the train guard.
+The all-reference artifact stabilizes the final production support used for
+MuonDIS.
 
 ## Bound definition
 
@@ -24,7 +29,7 @@ The cleaned `fluka2022_muons_down_tclean_v1` identity is mandatory for 2022. Cam
 PYTHONPATH=src python3 scripts/fit_compare_reference_guards.py \
   --dataset-config configs/datasets/fluka2022_muons_down_tclean_v1.yaml \
   --prepared-directory /absolute/path/to/prepared_data \
-  --output-directory /absolute/new/path/in/NFs_data/guards/2022/train_vs_all_clean_v2
+  --output-directory /absolute/new/path/in/NFs_data/guards/fluka2022_muons_down_tclean_v1/train_vs_all_clean_v2
 ```
 
 Add `--generated-root /path/to/pre_rejection_proposals.root` to compare both guards on exactly the same generated proposals.

@@ -160,3 +160,69 @@ def test_resolve_and_generate_model4_pair(tmp_path):
         )
         assert np.allclose(constant["nt"]["w"].array(library="np"), 12 * 0.25 / 8)
     assert report["reconstruction"]["scoring_plane"]["fit_rows"] == 40
+
+    split_references = {}
+    for split_name, rows in (("train", 40), ("validation", 12), ("test", 10)):
+        with uproot.open(split / f"{split_name}_rawfeature.root") as source:
+            split_values = source["nt"].arrays(list(PHYSICAL_FEATURES), library="np")
+            split_references[split_name] = ReferenceData(
+                {name: split_values[name] for name in PHYSICAL_FEATURES},
+                np.ones(rows),
+                split_name,
+            )
+    all_guard = fit_reference_guard(
+        split_references,
+        dataset_id=dataset_id,
+        dataset_fingerprint="fingerprint",
+        split_id="split-id",
+        fit_scope="all_clean_splits",
+        iqr_multiplier=100.0,
+        lower_quantile=0.001,
+        upper_quantile=0.999,
+    )
+    all_guard_path = tmp_path / "guard_all.json"
+    all_guard_path.write_text(json.dumps(all_guard))
+    selection_path = tmp_path / "selected_model.json"
+    selection_path.write_text(
+        json.dumps(
+            {
+                "status": "frozen",
+                "test_data_used": False,
+                "winner": {"training_run": str(run.resolve())},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="test requires the train-reference guard"):
+        resolve_generation_config(
+            run_directory=run,
+            purpose="test",
+            guard_artifact=all_guard_path,
+            frozen_selection=selection_path,
+        )
+    test_config = resolve_generation_config(
+        run_directory=run,
+        purpose="test",
+        guard_artifact=guard_path,
+        frozen_selection=selection_path,
+    )
+    assert test_config["normalization"]["scope"] == "test"
+
+    with pytest.raises(
+        ValueError, match="muondis requires the all-clean-FLUKA production guard"
+    ):
+        resolve_generation_config(
+            run_directory=run,
+            purpose="muondis",
+            guard_artifact=guard_path,
+            number_events=100,
+            frozen_selection=selection_path,
+        )
+    production_config = resolve_generation_config(
+        run_directory=run,
+        purpose="muondis",
+        guard_artifact=all_guard_path,
+        number_events=100,
+        frozen_selection=selection_path,
+    )
+    assert production_config["normalization"]["scope"] == "train+validation+test"

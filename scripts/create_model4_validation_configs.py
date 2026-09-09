@@ -38,6 +38,7 @@ def main() -> None:
         )
     records = []
     identities = set()
+    candidates = []
     for success in successes:
         run = success.parent
         training = json.loads((run / "config_resolved.json").read_text())
@@ -53,6 +54,17 @@ def main() -> None:
             / "train_vs_all_clean_v2"
             / "guard_train_ref.json"
         )
+        candidates.append((run, dataset_id, pipeline, guard))
+    missing_guards = [
+        str(guard) for _, _, _, guard in candidates if not guard.is_file()
+    ]
+    if missing_guards:
+        formatted = "\n".join(f"- {path}" for path in missing_guards)
+        raise FileNotFoundError(
+            "Generated-validation guard preflight failed. Missing train-reference "
+            f"artifacts:\n{formatted}"
+        )
+    for run, dataset_id, pipeline, guard in candidates:
         config = resolve_generation_config(
             run_directory=run,
             purpose="validation",
