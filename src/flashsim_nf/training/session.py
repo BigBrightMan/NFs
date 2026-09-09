@@ -217,6 +217,29 @@ class TrainingSession:
                 data_loader_generator=self.data_loader_generator,
             )
             self.writer.save(epoch, payload, improved=improved)
+            progress = [
+                f"Epoch {epoch}/{self.policy.maximum_epochs}",
+                f"train NLL={train_loss:.6f}",
+                f"validation NLL={validation_loss:.6f}",
+                (
+                    "best="
+                    f"{self.early_stopping.best_validation_loss:.6f}"
+                    f"@{self.early_stopping.best_epoch}"
+                ),
+                f"LR={row['learning_rate']:.3e}",
+            ]
+            if "train_gradient_norm" in row:
+                progress.append(
+                    f"gradient norm={row['train_gradient_norm']:.4f}"
+                )
+            if "train_batch_weight_mean_cv" in row:
+                progress.append(
+                    f"weight CV={row['train_batch_weight_mean_cv']:.4f}"
+                )
+            progress.append(f"time={row['epoch_seconds']:.1f}s")
+            if improved:
+                progress.append("new best")
+            print(" | ".join(progress), flush=True)
             if self.early_stopping.should_stop:
                 break
         summary = {

@@ -137,13 +137,13 @@ def _plot_diagnostics(
         f"{ablation} · Training validation"
     )
     figure.text(
-        0.012,
-        0.988,
+        0.992,
+        0.008,
         "FlashSim in progress",
-        ha="left",
-        va="top",
-        fontsize=14,
-        fontweight="bold",
+        ha="right",
+        va="bottom",
+        fontsize=12,
+        fontstyle="italic",
         color="#1f5da8",
     )
     destination.parent.mkdir(parents=True, exist_ok=True)

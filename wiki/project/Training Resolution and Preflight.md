@@ -150,6 +150,12 @@ CERN no longer supports Condor `stream_output`/`stream_error`. NFs therefore kee
 
 List the resulting `*.live.log` file and follow it with `tail -f`. This custom log does not use the schedd streaming feature that CERN removed.
 
+After every epoch checkpoint is safely written, training prints one flushed line
+to the custom live log. The line records epoch progress, train and validation
+weighted NLL, best validation NLL and epoch, learning rate, gradient norm,
+batch-weight CV, epoch time, and whether the epoch established a new best.
+`training/training_history.csv` remains the complete machine-readable record.
+
 The production default is 500 epochs, early stopping disabled, and a numbered full-state checkpoint every 50 epochs. `best_model.pt` is still updated whenever validation NLL improves.
 
 ## Safety and reruns

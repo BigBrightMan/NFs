@@ -201,3 +201,50 @@ def test_training_policy_defaults_and_optional_early_stopping() -> None:
     )
     assert enabled.early_stopping_enabled is True
     assert enabled.early_stopping_patience == 12
+
+
+def test_training_prints_flushed_epoch_progress(tmp_path: Path, monkeypatch) -> None:
+    model, optimizer, scheduler = _objects()
+    destination = tmp_path / "live_progress"
+    session = TrainingSession.fresh(
+        destination_run=destination,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=None,
+        policy=TrainingPolicy(maximum_epochs=1, checkpoint_interval=50),
+        config={"training": {"maximum_epochs": 1}},
+    )
+    calls = []
+
+    def record_print(*values, **options):
+        calls.append((" ".join(str(value) for value in values), options))
+
+    monkeypatch.setattr("builtins.print", record_print)
+
+    def train_epoch(model, optimizer, scaler, epoch):
+        optimizer.zero_grad(set_to_none=True)
+        loss = model(torch.ones(2, 2)).square().mean()
+        loss.backward()
+        optimizer.step()
+        return {
+            "loss": float(loss.detach()),
+            "gradient_norm": 1.25,
+            "batch_weight_mean_cv": 0.04,
+        }
+
+    session.run(
+        train_epoch=train_epoch,
+        validate_epoch=lambda model, epoch: 0.75,
+    )
+
+    assert len(calls) == 1
+    message, options = calls[0]
+    assert "Epoch 1/1" in message
+    assert "train NLL=" in message
+    assert "validation NLL=0.750000" in message
+    assert "best=0.750000@1" in message
+    assert "gradient norm=1.2500" in message
+    assert "weight CV=0.0400" in message
+    assert "new best" in message
+    assert options["flush"] is True
