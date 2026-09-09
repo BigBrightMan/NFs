@@ -20,3 +20,14 @@ Detailed timestamped implementation notes are indexed in [[Daily Work Log]].
 - Recorded source conflicts: the historical Model 4 runbook freezes Pipeline B, while completed generated-validation selects Pipeline A; Model 3 is described in research discussions but is not a validated production model.
 
 See [[index|NFs Research Wiki]] and [[Current Research Status]].
+
+## 2026-09-09
+
+- Completed the standalone Model 4 post-training pipeline in NFs: inverse A/B/C,
+  physics reconstruction, guarded ROOT generation, `w1`/`global_c`, weighted
+  generated-validation metrics and plots, winner freezing, and final-stage
+  selection gates.
+- Kept authoritative detector x/y bounds as an explicit unresolved input rather
+  than inferring a detector definition from FLUKA sample extrema.
+- Added exact-count four-year validation config creation and matrix submission,
+  then verified the complete repository with 62 passing tests.

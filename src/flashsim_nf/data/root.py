@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -177,3 +178,40 @@ def split_spec_to_dict(spec: RootSplitSpec) -> dict[str, Any]:
         payload[key] = str(payload[key])
     payload["feature_order"] = list(payload["feature_order"])
     return payload
+
+
+def write_root_arrays(
+    path: str | Path,
+    arrays: dict[str, np.ndarray],
+    *,
+    tree_name: str = "nt",
+    overwrite: bool = False,
+) -> Path:
+    """Atomically write aligned flat arrays to one ROOT TTree."""
+
+    destination = Path(path)
+    if destination.exists() and not overwrite:
+        raise FileExistsError(destination)
+    if not arrays:
+        raise ValueError("ROOT output arrays must not be empty")
+    lengths = {len(np.asarray(value)) for value in arrays.values()}
+    if len(lengths) != 1:
+        raise ValueError("ROOT output branches have different row counts")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp.{os.getpid()}")
+    uproot = _uproot()
+    try:
+        with uproot.recreate(temporary) as sink:
+            sink[tree_name] = {
+                name: np.asarray(value) for name, value in arrays.items()
+            }
+        with uproot.open(temporary) as source:
+            tree = source[tree_name]
+            if int(tree.num_entries) != next(iter(lengths)):
+                raise RuntimeError("ROOT verification row count mismatch")
+            tree.arrays(list(arrays), library="np")
+        temporary.replace(destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return destination.resolve()

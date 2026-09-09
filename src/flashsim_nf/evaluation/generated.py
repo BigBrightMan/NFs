@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import os
+import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from scipy.spatial.distance import cdist
-from scipy.stats import wasserstein_distance
+from scipy.stats import rankdata, wasserstein_distance
 
 from ..manifest import write_json_atomic
 from ..models.model4 import sample_weight_summary
+from .plots import write_generated_evaluation_plots
 
 FEATURES_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
 
@@ -25,6 +29,7 @@ class EvaluationSettings:
     sliced_wasserstein_projections: int = 64
     minimum_tail_ess: float = 20.0
     random_seed: int = 1556
+    c2st_max_rows_per_class: int = 50_000
 
     def __post_init__(self) -> None:
         if not self.tail_quantiles or any(
@@ -35,11 +40,15 @@ class EvaluationSettings:
             value <= 0.5 or value >= 1.0 for value in self.ccdf_quantiles
         ):
             raise ValueError("ccdf_quantiles must lie strictly between 0.5 and 1")
-        if min(
-            self.energy_sample_size,
-            self.energy_repeats,
-            self.sliced_wasserstein_projections,
-        ) <= 0:
+        if (
+            min(
+                self.energy_sample_size,
+                self.energy_repeats,
+                self.sliced_wasserstein_projections,
+                self.c2st_max_rows_per_class,
+            )
+            <= 0
+        ):
             raise ValueError("Monte Carlo evaluation settings must be positive")
         if self.minimum_tail_ess <= 0:
             raise ValueError("minimum_tail_ess must be positive")
@@ -88,12 +97,119 @@ def _weighted_moments(
     return mean, 0.5 * (covariance + covariance.T)
 
 
+def _weighted_correlation(matrix: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    _, covariance = _weighted_moments(matrix, weights)
+    scale = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+    denominator = np.outer(scale, scale)
+    correlation = np.divide(
+        covariance,
+        denominator,
+        out=np.zeros_like(covariance),
+        where=denominator > np.finfo(float).eps,
+    )
+    np.fill_diagonal(correlation, 1.0)
+    return np.clip(correlation, -1.0, 1.0)
+
+
+def _correlation_metrics(
+    reference: np.ndarray,
+    generated: np.ndarray,
+    reference_weights: np.ndarray,
+    generated_weights: np.ndarray,
+) -> dict[str, Any]:
+    pearson_reference = _weighted_correlation(reference, reference_weights)
+    pearson_generated = _weighted_correlation(generated, generated_weights)
+    reference_ranks = np.column_stack(
+        [rankdata(reference[:, index]) for index in range(reference.shape[1])]
+    )
+    generated_ranks = np.column_stack(
+        [rankdata(generated[:, index]) for index in range(generated.shape[1])]
+    )
+    spearman_reference = _weighted_correlation(reference_ranks, reference_weights)
+    spearman_generated = _weighted_correlation(generated_ranks, generated_weights)
+    return {
+        "pearson": {
+            "reference": pearson_reference.tolist(),
+            "generated": pearson_generated.tolist(),
+            "difference": (pearson_generated - pearson_reference).tolist(),
+            "mean_absolute_difference": float(
+                np.mean(np.abs(pearson_generated - pearson_reference))
+            ),
+        },
+        "spearman": {
+            "reference": spearman_reference.tolist(),
+            "generated": spearman_generated.tolist(),
+            "difference": (spearman_generated - spearman_reference).tolist(),
+            "mean_absolute_difference": float(
+                np.mean(np.abs(spearman_generated - spearman_reference))
+            ),
+        },
+    }
+
+
+def _c2st(
+    reference: np.ndarray,
+    generated: np.ndarray,
+    reference_weights: np.ndarray,
+    generated_weights: np.ndarray,
+    settings: EvaluationSettings,
+) -> dict[str, Any]:
+    try:
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        from sklearn.metrics import roc_auc_score
+        from sklearn.model_selection import train_test_split
+    except ImportError as error:  # pragma: no cover
+        raise RuntimeError("C2ST evaluation requires scikit-learn") from error
+    rng = np.random.default_rng(settings.random_seed + 2)
+    rows = min(len(reference), len(generated), settings.c2st_max_rows_per_class)
+    reference_indices = rng.choice(
+        len(reference),
+        size=rows,
+        replace=True,
+        p=reference_weights / reference_weights.sum(),
+    )
+    generated_indices = rng.choice(
+        len(generated),
+        size=rows,
+        replace=True,
+        p=generated_weights / generated_weights.sum(),
+    )
+    values = np.vstack([reference[reference_indices], generated[generated_indices]])
+    labels = np.concatenate([np.zeros(rows), np.ones(rows)])
+    indices = np.arange(len(values))
+    train_indices, test_indices = train_test_split(
+        indices,
+        test_size=0.3,
+        random_state=settings.random_seed + 2,
+        stratify=labels,
+    )
+    classifier = HistGradientBoostingClassifier(
+        max_iter=100,
+        max_leaf_nodes=31,
+        learning_rate=0.1,
+        random_state=settings.random_seed + 2,
+    )
+    classifier.fit(
+        values[train_indices],
+        labels[train_indices],
+    )
+    probability = classifier.predict_proba(values[test_indices])[:, 1]
+    auc = float(roc_auc_score(labels[test_indices], probability))
+    return {
+        "classifier": "weighted_hist_gradient_boosting",
+        "rows_per_class": rows,
+        "sampling": "weighted_resampling_with_replacement",
+        "test_fraction": 0.3,
+        "roc_auc": auc,
+        "distance_from_ideal_half": abs(auc - 0.5),
+        "interpretation": "0.5 is indistinguishable; larger separation is worse",
+    }
+
+
 def _psd_square_root(matrix: np.ndarray) -> np.ndarray:
     symmetric = 0.5 * (matrix + matrix.T)
     eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
-    return (eigenvectors * np.sqrt(np.clip(eigenvalues, 0.0, None))) @ (
-        eigenvectors.T
-    )
+    return (eigenvectors * np.sqrt(np.clip(eigenvalues, 0.0, None))) @ (eigenvectors.T)
 
 
 def frechet_gaussian_distance(
@@ -104,9 +220,7 @@ def frechet_gaussian_distance(
 ) -> float:
     mean_term = float(np.sum(np.square(first_mean - second_mean)))
     first_root = _psd_square_root(first_covariance)
-    middle_root = _psd_square_root(
-        first_root @ second_covariance @ first_root
-    )
+    middle_root = _psd_square_root(first_root @ second_covariance @ first_root)
     covariance_term = float(
         np.trace(first_covariance + second_covariance - 2.0 * middle_root)
     )
@@ -196,9 +310,7 @@ def _tail_metrics(
         train_values = train[:, index]
         reference_values = reference[:, index]
         generated_values = generated[:, index]
-        train_core = weighted_quantile(
-            train_values, train_weights, (0.001, 0.999)
-        )
+        train_core = weighted_quantile(train_values, train_weights, (0.001, 0.999))
         robust_width = max(float(train_core[1] - train_core[0]), np.finfo(float).eps)
         feature_levels: dict[str, Any] = {}
         for quantile in settings.tail_quantiles:
@@ -232,12 +344,10 @@ def _tail_metrics(
                 "train_thresholds": {"lower": float(lower), "upper": float(upper)},
                 "quantile_error_over_train_core_width": {
                     "lower": float(
-                        (generated_quantiles[0] - reference_quantiles[0])
-                        / robust_width
+                        (generated_quantiles[0] - reference_quantiles[0]) / robust_width
                     ),
                     "upper": float(
-                        (generated_quantiles[1] - reference_quantiles[1])
-                        / robust_width
+                        (generated_quantiles[1] - reference_quantiles[1]) / robust_width
                     ),
                 },
                 "lower": {
@@ -303,9 +413,7 @@ def _tail_metrics(
         )
         ccdf_rows = []
         log_ratios = []
-        for probability, threshold in zip(
-            settings.ccdf_quantiles, ccdf_thresholds
-        ):
+        for probability, threshold in zip(settings.ccdf_quantiles, ccdf_thresholds):
             reference_mass = _weighted_mass(
                 reference_values >= threshold, reference_weights
             )
@@ -356,9 +464,7 @@ def _energy_distance(
         y1 = generated[rng.choice(len(generated), size=size, p=generated_probability)]
         y2 = generated[rng.choice(len(generated), size=size, p=generated_probability)]
         estimate = float(
-            2.0 * cdist(x1, y1).mean()
-            - cdist(x1, x2).mean()
-            - cdist(y1, y2).mean()
+            2.0 * cdist(x1, y1).mean() - cdist(x1, x2).mean() - cdist(y1, y2).mean()
         )
         estimates.append(estimate)
     return {
@@ -441,9 +547,7 @@ def evaluate_generated_arrays(
 
     marginal = {}
     for index, feature in enumerate(FEATURES_8D):
-        train_core = weighted_quantile(
-            train[:, index], train_weights, (0.001, 0.999)
-        )
+        train_core = weighted_quantile(train[:, index], train_weights, (0.001, 0.999))
         width = max(float(train_core[1] - train_core[0]), np.finfo(float).eps)
         distance = float(
             wasserstein_distance(
@@ -498,7 +602,20 @@ def evaluate_generated_arrays(
                 generated_weights,
                 settings,
             ),
+            "c2st": _c2st(
+                standardized_reference,
+                standardized_generated,
+                reference_weights,
+                generated_weights,
+                settings,
+            ),
         },
+        "correlations": _correlation_metrics(
+            reference,
+            generated,
+            reference_weights,
+            generated_weights,
+        ),
         "marginal": marginal,
         "tails": _tail_metrics(
             train,
@@ -616,9 +733,40 @@ def evaluate_generated_root_files(
         },
         "evaluation": evaluation,
     }
-    write_json_atomic(destination / "generated_evaluation.json", report)
-    write_json_atomic(
-        destination / "_SUCCESS.json",
-        {"stage": "generated_evaluation", "reference_split": reference_split},
+    generation_manifest_path = Path(generated_root).parent / "generation_manifest.json"
+    generation_manifest = (
+        json.loads(generation_manifest_path.read_text())
+        if generation_manifest_path.is_file()
+        else {}
     )
+    partial = destination.with_name(f".{destination.name}.partial.{os.getpid()}")
+    if partial.exists():
+        raise FileExistsError(partial)
+    try:
+        temporary_plots = write_generated_evaluation_plots(
+            reference=reference,
+            generated=generated,
+            reference_weights=reference_weights,
+            generated_weights=generated_weights,
+            report=report,
+            output_directory=partial,
+            context={
+                "year": generation_manifest.get("dataset", {}).get("year", "Unknown"),
+                "preprocessing": generation_manifest.get("preprocessing", "?"),
+                "reference_split": reference_split,
+            },
+        )
+        report["plots"] = [
+            str((destination / Path(path).relative_to(partial)).resolve())
+            for path in temporary_plots
+        ]
+        write_json_atomic(partial / "generated_evaluation.json", report)
+        write_json_atomic(
+            partial / "_SUCCESS.json",
+            {"stage": "generated_evaluation", "reference_split": reference_split},
+        )
+        partial.replace(destination)
+    finally:
+        if partial.exists():
+            shutil.rmtree(partial)
     return report

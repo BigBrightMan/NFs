@@ -245,6 +245,23 @@ def _rejection_masks(
     return rejected, reasons
 
 
+def guard_rejection_masks(
+    data: ReferenceData, artifact: dict[str, Any]
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Return inclusive and per-feature masks after validating guard identity."""
+
+    if artifact.get("format") != FORMAT_NAME:
+        raise ValueError("Unsupported robust reference guard format")
+    if int(artifact.get("format_version", -1)) != FORMAT_VERSION:
+        raise ValueError("Unsupported robust reference guard version")
+    expected = artifact.get("artifact_sha256")
+    unhashed = dict(artifact)
+    unhashed.pop("artifact_sha256", None)
+    if expected != _canonical_hash(unhashed):
+        raise ValueError("Robust reference guard SHA-256 mismatch")
+    return _rejection_masks(data, artifact)
+
+
 def evaluate_guard(data: ReferenceData, artifact: dict[str, Any]) -> dict[str, Any]:
     """Evaluate inclusive rejection and non-exclusive feature reasons."""
 
@@ -353,9 +370,7 @@ def load_reference_splits(
                 expected_rows=int(split["counts"][name]),
                 split_manifest_path=prepared / "split" / "split_manifest.json",
                 expected_split_id=str(split["id"]),
-                expected_dataset_fingerprint=str(
-                    dataset_config["dataset_fingerprint"]
-                ),
+                expected_dataset_fingerprint=str(dataset_config["dataset_fingerprint"]),
                 feature_dtype="float64",
                 weight_dtype="float64",
             )

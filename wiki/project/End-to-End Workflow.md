@@ -1,6 +1,6 @@
 ---
 status: confirmed
-last_verified: 2026-09-08
+last_verified: 2026-09-09
 sources:
   - FS/ARCHITECTURE.md
   - FS/MODEL4_TUNING_RUNBOOK.md
@@ -28,3 +28,9 @@ The train split fits preprocessing and the generation guard. The validation spli
 Generated candidates are inverse transformed, deterministic `z` and `E` are reconstructed for the `drop_z_E` design, and guard failures are rejected and resampled until the requested accepted count is reached.
 
 Related pages: [[Dataset Registry]], [[Preprocessing Pipelines]], [[Model 4]], [[Validation Strategy]], [[Why Rejection Sampling]], and [[w1 and global_c]].
+
+The maintained implementation lives entirely in `flashsim_nf`: training and
+checkpointing, legacy A/B/C metadata adaptation, physical reconstruction,
+guarded generation, equal-weight exports, generated-validation metrics/plots,
+validation-only winner freezing, final-test gating, and CERN submission. It
+does not import the old `flashsim` package at runtime.
