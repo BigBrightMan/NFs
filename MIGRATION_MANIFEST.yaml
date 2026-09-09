@@ -33,7 +33,18 @@ components:
     source: src/flashsim/model4_evaluation.py
     source_sha256: b2eb3b746027925f40abf5f7d77bccb7f1ec9d42189eae2ebe0a2168ab572684
     destination: src/flashsim_nf/evaluation/
-    status: planned
+    status: adapted
+    design: weighted_physical_global_marginal_and_train_defined_tail_metrics
+    verification:
+      - tests/test_generated_evaluation.py
+
+  model4_training_diagnostics:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/evaluation/training.py
+    status: verified
+    design: immutable_read_only_history_and_checkpoint_diagnostics
+    verification:
+      - tests/test_training_evaluation.py
 
   generation_guard:
     source: src/flashsim/generation_guard.py

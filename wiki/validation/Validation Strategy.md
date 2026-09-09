@@ -30,3 +30,6 @@ Each pipeline finalist is sampled and inverse transformed into common physical c
 The held-out test is used once after the choice is frozen. It reports performance and must not change preprocessing, guard policy, architecture, checkpoint, or hyperparameters.
 
 Cross-pipeline NLL comparison is invalid because the coordinate transforms and Jacobians differ. Physical-space generated-validation is the common comparison domain.
+
+See [[Post-training Evaluation]] for the implemented commands, artifacts, global
+multivariate metrics, and train-defined tail diagnostics.

@@ -38,6 +38,7 @@ This wiki is the synthesis layer for the FlashSim normalizing-flow research proj
 ## Validation and experiments
 
 - [[Validation Strategy]]
+- [[Post-training Evaluation]]
 - [[CCDF]]
 - [[C2ST]]
 - [[Correlation Validation]]
