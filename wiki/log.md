@@ -33,3 +33,5 @@ See [[index|NFs Research Wiki]] and [[Current Research Status]].
   then verified the complete repository with 62 passing tests.
 - Locked guard scope by stage: train-only for validation/test reporting and
   all-clean-FLUKA for frozen MuonDIS production, with a four-year guard builder.
+- Corrected weighted Spearman to use weighted empirical-CDF mid-ranks and
+  versioned the generated-evaluation metric contract as version 2.

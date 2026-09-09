@@ -57,6 +57,12 @@ approximate multivariate Energy Distance, sliced Wasserstein, weighted HGB
 C2ST, Pearson/Spearman correlation differences, per-feature weighted KS and
 normalized Wasserstein, and two-sided tail diagnostics.
 
+Spearman uses weighted empirical-CDF mid-ranks for the FLUKA reference and the
+corresponding uniform mid-ranks for generated events. This matches the physical
+weighted target density without making `w` an NF feature. Reports using this
+definition declare generated-evaluation metric-contract version 2; the winner
+selector refuses to mix them with older reports.
+
 The figures comprise combined core and full-minmax feature pages, Pearson and
 Spearman correlation comparisons, and tail CCDFs. `E` is displayed as
 `log10(E/GeV)` only at plotting time. FLUKA is labelled `FLUKA (simulation)`,

@@ -8,6 +8,8 @@ from flashsim_nf.evaluation.generated import (
     EvaluationSettings,
     evaluate_generated_arrays,
     evaluate_generated_root_files,
+    weighted_midrank,
+    weighted_spearman_correlation,
 )
 
 
@@ -73,6 +75,38 @@ def test_shifted_generated_arrays_increase_fgd() -> None:
     ]["frechet_gaussian_distance"]
 
 
+def test_weighted_midrank_matches_expanded_integer_weight_population() -> None:
+    values = np.array([1.0, 2.0, 2.0, 4.0])
+    weights = np.array([1.0, 2.0, 3.0, 2.0])
+    expanded = np.repeat(values, weights.astype(int))
+    expanded_midrank = weighted_midrank(expanded, np.ones(len(expanded)))
+    expected = np.array(
+        [expanded_midrank[expanded == value].mean() for value in values]
+    )
+    assert np.allclose(weighted_midrank(values, weights), expected)
+
+
+def test_weighted_spearman_matches_expanded_integer_weight_population() -> None:
+    matrix = np.array(
+        [
+            [1.0, 4.0],
+            [2.0, 1.0],
+            [2.0, 3.0],
+            [4.0, 2.0],
+        ]
+    )
+    weights = np.array([1.0, 2.0, 3.0, 2.0])
+    expanded = np.repeat(matrix, weights.astype(int), axis=0)
+    expanded_ranks = np.column_stack(
+        [
+            weighted_midrank(expanded[:, index], np.ones(len(expanded)))
+            for index in range(expanded.shape[1])
+        ]
+    )
+    expected = np.corrcoef(expanded_ranks, rowvar=False)
+    assert np.allclose(weighted_spearman_correlation(matrix, weights), expected)
+
+
 def _write_root(path, *, rows: int, seed: int, include_weights: bool) -> None:
     rng = np.random.default_rng(seed)
     branches = {
@@ -104,6 +138,8 @@ def test_root_evaluation_requires_fluka_weights_and_writes_immutable_report(
         generated_weight_mode="uniform",
         settings=_settings(),
     )
+    assert report["format"] == "flashsim_nf.generated_evaluation"
+    assert report["format_version"] == 2
     assert report["inputs"]["weight_sources"]["reference"] == "ROOT branch w"
     assert report["inputs"]["weight_sources"]["generated"] == "uniform"
     assert (output / "generated_evaluation.json").is_file()

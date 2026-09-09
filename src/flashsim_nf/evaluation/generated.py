@@ -11,13 +11,15 @@ from typing import Any
 
 import numpy as np
 from scipy.spatial.distance import cdist
-from scipy.stats import rankdata, wasserstein_distance
+from scipy.stats import wasserstein_distance
 
 from ..manifest import write_json_atomic
 from ..models.model4 import sample_weight_summary
 from .plots import write_generated_evaluation_plots
 
 FEATURES_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
+EVALUATION_FORMAT = "flashsim_nf.generated_evaluation"
+EVALUATION_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,54 @@ def _weighted_correlation(matrix: np.ndarray, weights: np.ndarray) -> np.ndarray
     return np.clip(correlation, -1.0, 1.0)
 
 
+def weighted_midrank(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Return weighted empirical-CDF mid-ranks, preserving exact ties."""
+
+    values = np.asarray(values, dtype=np.float64).reshape(-1)
+    weights = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if values.shape != weights.shape or len(values) == 0:
+        raise ValueError("Weighted mid-ranks require aligned non-empty arrays")
+    if not np.isfinite(values).all() or not np.isfinite(weights).all():
+        raise ValueError("Weighted mid-ranks require finite values and weights")
+    if np.any(weights <= 0.0):
+        raise ValueError("Weighted mid-ranks require strictly positive weights")
+
+    order = np.argsort(values, kind="mergesort")
+    ordered_values = values[order]
+    ordered_weights = weights[order]
+    starts = np.concatenate(
+        ([0], np.flatnonzero(ordered_values[1:] != ordered_values[:-1]) + 1)
+    )
+    ends = np.concatenate((starts[1:], [len(values)]))
+    group_weights = np.add.reduceat(ordered_weights, starts)
+    cumulative_before = np.cumsum(group_weights) - group_weights
+    group_midpoints = (
+        cumulative_before + 0.5 * group_weights
+    ) / ordered_weights.sum(dtype=np.float64)
+    ordered_ranks = np.repeat(group_midpoints, ends - starts)
+    ranks = np.empty(len(values), dtype=np.float64)
+    ranks[order] = ordered_ranks
+    return ranks
+
+
+def weighted_spearman_correlation(
+    matrix: np.ndarray, weights: np.ndarray
+) -> np.ndarray:
+    """Compute Spearman correlation in the weighted target-density measure."""
+
+    matrix = np.asarray(matrix, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if matrix.ndim != 2 or len(matrix) != len(weights):
+        raise ValueError("Weighted Spearman requires an aligned 2D matrix")
+    ranks = np.column_stack(
+        [
+            weighted_midrank(matrix[:, index], weights)
+            for index in range(matrix.shape[1])
+        ]
+    )
+    return _weighted_correlation(ranks, weights)
+
+
 def _correlation_metrics(
     reference: np.ndarray,
     generated: np.ndarray,
@@ -119,14 +169,12 @@ def _correlation_metrics(
 ) -> dict[str, Any]:
     pearson_reference = _weighted_correlation(reference, reference_weights)
     pearson_generated = _weighted_correlation(generated, generated_weights)
-    reference_ranks = np.column_stack(
-        [rankdata(reference[:, index]) for index in range(reference.shape[1])]
+    spearman_reference = weighted_spearman_correlation(
+        reference, reference_weights
     )
-    generated_ranks = np.column_stack(
-        [rankdata(generated[:, index]) for index in range(generated.shape[1])]
+    spearman_generated = weighted_spearman_correlation(
+        generated, generated_weights
     )
-    spearman_reference = _weighted_correlation(reference_ranks, reference_weights)
-    spearman_generated = _weighted_correlation(generated_ranks, generated_weights)
     return {
         "pearson": {
             "reference": pearson_reference.tolist(),
@@ -137,6 +185,7 @@ def _correlation_metrics(
             ),
         },
         "spearman": {
+            "rank_method": "weighted_empirical_cdf_midrank",
             "reference": spearman_reference.tolist(),
             "generated": spearman_generated.tolist(),
             "difference": (spearman_generated - spearman_reference).tolist(),
@@ -717,6 +766,8 @@ def evaluate_generated_root_files(
         settings=settings or EvaluationSettings(),
     )
     report = {
+        "format": EVALUATION_FORMAT,
+        "format_version": EVALUATION_FORMAT_VERSION,
         "status": "complete",
         "dataset_id": dataset_id,
         "reference_split": reference_split,

@@ -55,6 +55,13 @@ def main() -> None:
     candidates = []
     for path in paths:
         payload = json.loads(path.read_text())
+        if (
+            payload.get("format") != "flashsim_nf.generated_evaluation"
+            or payload.get("format_version") != 2
+        ):
+            raise ValueError(
+                f"Unsupported evaluation metric contract (need version 2): {path}"
+            )
         if payload.get("status") != "complete":
             raise ValueError(f"Incomplete evaluation: {path}")
         if payload.get("reference_split") != "validation":
