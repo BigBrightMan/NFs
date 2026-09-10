@@ -27,17 +27,20 @@ def _complete_output(path: Path, dataset_id: str) -> bool:
     all_clean = json.loads(required[1].read_text())
     return (
         train.get("dataset_id") == dataset_id
-        and train.get("format_version") == 2
+        and train.get("format_version") == 3
         and train.get("fit_scope") == "train"
         and train.get("selection_allowed") is True
-        and train.get("hard_support", {}).get("contract_id")
-        == "per_dataset_all_features_raw_minmax_v1"
+        and train.get("empirical_support", {}).get("contract_id")
+        == "per_dataset_observed_envelope_v2"
+        and train.get("empirical_support", {}).get("action") == "diagnostic_only"
         and all_clean.get("dataset_id") == dataset_id
-        and all_clean.get("format_version") == 2
+        and all_clean.get("format_version") == 3
         and all_clean.get("fit_scope") == "all_clean_splits"
         and all_clean.get("selection_allowed") is False
-        and all_clean.get("hard_support", {}).get("contract_id")
-        == "per_dataset_all_features_raw_minmax_v1"
+        and all_clean.get("empirical_support", {}).get("contract_id")
+        == "per_dataset_observed_envelope_v2"
+        and all_clean.get("empirical_support", {}).get("action")
+        == "operational_reject"
     )
 
 

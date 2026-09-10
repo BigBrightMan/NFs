@@ -4,10 +4,11 @@ import numpy as np
 import pytest
 
 from flashsim_nf.guards import (
-    HARD_SUPPORT_FEATURES,
+    EMPIRICAL_SUPPORT_FEATURES,
     PHYSICAL_FEATURES,
     ReferenceData,
     compare_reference_guards,
+    evaluate_guard,
     fit_reference_guard,
     weighted_quantile,
 )
@@ -73,11 +74,17 @@ def test_train_and_all_reference_guards_have_separate_roles() -> None:
     assert train_guard["settings"]["raw_minmax_used"] is True
     assert (
         train_guard["settings"]["raw_minmax_usage"]
-        == "hard_support_all_physical_features"
+        == "finite_sample_observed_envelope"
     )
     assert train_guard["settings"]["robust_bound_action"] == "diagnostic_only"
-    assert set(train_guard["hard_support"]["feature_bounds"]) == set(
-        HARD_SUPPORT_FEATURES
+    assert set(train_guard["empirical_support"]["feature_bounds"]) == set(
+        EMPIRICAL_SUPPORT_FEATURES
+    )
+    assert train_guard["empirical_support"]["action"] == "diagnostic_only"
+    assert all_guard["empirical_support"]["action"] == "operational_reject"
+    assert (
+        train_guard["physical_contract"]["contract_id"]
+        == "model4_drop_ze_physics_v1"
     )
     assert (
         all_guard["feature_bounds"]["x"]["physical_upper"]
@@ -113,22 +120,42 @@ def test_same_proposal_comparison_reports_overlap_and_weighted_coverage() -> Non
                 f"diagnostic_robust_{feature}_outside"
                 for feature in PHYSICAL_FEATURES
             } | {
-                f"hard_support_{feature}_outside"
-                for feature in HARD_SUPPORT_FEATURES
-            }
+                (
+                    f"diagnostic_empirical_{feature}_outside"
+                    if guard == "train_ref"
+                    else f"production_empirical_{feature}_outside"
+                )
+                for feature in EMPIRICAL_SUPPORT_FEATURES
+            } | {"physical_nonfinite", "physical_E_le_10", "physical_pz_le_0"}
 
 
-def test_hard_support_uses_raw_minmax_for_each_reference_scope() -> None:
+def test_empirical_envelope_uses_raw_minmax_for_each_reference_scope() -> None:
     splits = {
         "train": _data("train", np.linspace(0.0, 9.0, 20)),
         "validation": _data("validation", np.linspace(-3.0, 30.0, 20)),
         "test": _data("test", np.linspace(-4.0, 40.0, 20)),
     }
     train_guard, all_guard = _guards(splits)
-    train_x = train_guard["hard_support"]["feature_bounds"]["x"]
-    all_x = all_guard["hard_support"]["feature_bounds"]["x"]
+    train_x = train_guard["empirical_support"]["feature_bounds"]["x"]
+    all_x = all_guard["empirical_support"]["feature_bounds"]["x"]
     assert train_x == {"physical_lower": 0.0, "physical_upper": 9.0}
     assert all_x == {"physical_lower": -4.0, "physical_upper": 40.0}
+
+
+def test_train_envelope_monitors_but_production_envelope_rejects() -> None:
+    splits = {
+        "train": _data("train", np.linspace(0.0, 9.0, 20)),
+        "validation": _data("validation", np.linspace(0.0, 30.0, 20)),
+        "test": _data("test", np.linspace(0.0, 40.0, 20)),
+    }
+    train_guard, all_guard = _guards(splits)
+    proposal = _data("proposal", np.array([5.0, 25.0, 100.0]))
+    train_result = evaluate_guard(proposal, train_guard)
+    production_result = evaluate_guard(proposal, all_guard)
+    assert train_result["rejected_rows"] == 0
+    assert train_result["reasons"]["diagnostic_empirical_x_outside"]["rows"] == 2
+    assert production_result["rejected_rows"] == 1
+    assert production_result["reasons"]["production_empirical_x_outside"]["rows"] == 1
 
 
 def test_all_reference_guard_requires_all_clean_splits() -> None:

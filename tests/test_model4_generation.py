@@ -160,6 +160,8 @@ def test_resolve_and_generate_model4_pair(tmp_path):
         )
         assert np.allclose(constant["nt"]["w"].array(library="np"), 12 * 0.25 / 8)
     assert report["reconstruction"]["scoring_plane"]["fit_rows"] == 40
+    assert report["guard"]["empirical_envelope_action"] == "diagnostic_only"
+    assert report["diagnostics"]["do_not_affect_acceptance"] is True
 
     split_references = {}
     for split_name, rows in (("train", 40), ("validation", 12), ("test", 10)):
@@ -226,3 +228,6 @@ def test_resolve_and_generate_model4_pair(tmp_path):
         frozen_selection=selection_path,
     )
     assert production_config["normalization"]["scope"] == "train+validation+test"
+    assert production_config["guard"]["empirical_envelope_action"] == (
+        "operational_reject"
+    )

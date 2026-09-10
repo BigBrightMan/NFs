@@ -1,6 +1,6 @@
 ---
 status: implemented
-last_verified: 2026-09-10
+last_verified: 2026-09-11
 ---
 
 # Post-training Evaluation
@@ -102,6 +102,18 @@ another tuning round.
 
 ## Complete checkpoint-to-evaluation command
 
+The short CERN wrapper runs this v4 sequence without copying individual paths:
+
+```bash
+bash scripts/run_model4_guard_v4_validation.sh check
+bash scripts/run_model4_guard_v4_validation.sh prepare
+bash scripts/run_model4_guard_v4_validation.sh submit
+```
+
+`check` is read-only. `prepare` creates the four guard pairs and twelve immutable
+generated-validation configs, then prints a submission dry-run. Only the
+explicit `submit` mode loads the EOS batch module and submits jobs.
+
 Create or verify both reference guards for all four campaigns first:
 
 ```bash
@@ -119,9 +131,11 @@ python scripts/create_model4_reference_guards.py \
 
 The command reads the frozen FLUKA train, validation, and test ROOT files. It
 writes `guard_train_ref.json` from train only and `guard_all_ref.json` from all
-three clean splits. Each artifact contains separate raw-min/max hard support for
-all eight physical features for its dataset/year. Weighted robust-tail bounds
-remain diagnostic-only. Complete existing outputs are verified and skipped;
+three clean splits. Each artifact records a raw-min/max observed envelope for
+all eight physical features for its dataset/year. The train envelope and
+weighted robust-tail bounds are diagnostic-only. The all-clean envelope is an
+operational production rejection policy and cannot be used for selection.
+Complete existing outputs are verified and skipped;
 incomplete or conflicting outputs stop the matrix before new work begins.
 
 For the completed four-year baseline matrix (A/B/C for each year), create the
@@ -141,7 +155,7 @@ submit the exact matrix:
 
 ```bash
 module load lxbatch/eossubmit
-config_root=/eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/model4_generated_validation_guard_v3
+config_root=/eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/model4_generated_validation_guard_v4
 
 python scripts/submit_model4_post_training_matrix.py \
   --config-root "$config_root" \
@@ -179,9 +193,10 @@ python scripts/submit_model4_post_training.py \
 ```
 
 The worker performs training diagnostics if absent, loads `best_model.pt`,
-inverse-transforms with the frozen A/B/C v3 metadata, reconstructs `z` from a
-train-fitted scoring plane and `E` from the muon mass shell, applies the
-train-reference per-dataset hard-support guard, writes identical-kinematics
+inverse-transforms with the frozen A/B/C preprocessing metadata, reconstructs
+`z` from a train-fitted scoring plane and `E` from the muon mass shell, applies
+the explicit physical contract, records train-envelope exceedances without
+rejecting them, and writes identical-kinematics
 `w1` and `global_c`
 ROOT files, then evaluates against validation. No runtime import from the old
 FS repository is used.
@@ -245,12 +260,12 @@ for MuonDIS. The final test compares with the frozen test split; MuonDIS
 `global_c` uses `sum(w)` from train+validation+test divided by 100,000.
 
 Guard roles are enforced in code. Generated-validation and final-test reporting
-must use the train-fitted guard, so validation/test values cannot define their
-own acceptance region. Frozen MuonDIS production must use the all-clean-FLUKA
-guard, which is the full-reference support requested for delivery. Passing the
-wrong artifact for a purpose is a hard error.
+must use the train-fitted diagnostic envelope, so validation/test values cannot
+define their own acceptance region. Frozen MuonDIS production must use the
+all-clean-FLUKA operational envelope. Passing the wrong artifact or envelope
+action for a purpose is a hard error.
 
-Detector x/y bounds remain disabled in the resolved manifest until an
-authoritative campaign artifact is supplied; they are never inferred from an
-observed sample min/max. Robust, finite-domain, mass-shell, and scoring-plane
-contracts are active.
+No observed per-feature maximum is labelled a physical limit. Authoritative
+geometry or beam bounds may be added to the explicit physical contract only
+when their source is recorded. Finite-domain, energy, direction, mass-shell,
+and scoring-plane contracts are active.

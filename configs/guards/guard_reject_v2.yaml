@@ -1,17 +1,29 @@
 guard_id: guard_reject_v2
 fit_split: train
 policy:
-  robust_mode: reject
+  robust_mode: diagnostic_only
   mass_shell_mode: reject
   scoring_plane_mode: reject
-  physical_support_mode: reference_scope_raw_minmax
+  physical_support_mode: explicit_physics_contract
+  empirical_envelope_mode: purpose_dependent
   maximum_rejection_fraction: 0.05
 
-# Every dataset/year receives its own empirical hard support. The train-reference
-# artifact is used for selection/test; the all-clean artifact is production-only.
-hard_support_features: [x, y, z, px, py, pz, E, t]
-hard_support_rule: raw_observed_minmax
-z_constraint: train_fitted_scoring_plane_and_reference_scope_raw_minmax
+# These are known before looking at validation/test distributions. Empirical maxima
+# are deliberately excluded from this physical contract.
+physical_contract:
+  finite_output: reject
+  energy_lower_exclusive_gev: 10.0
+  pz_lower_exclusive_gev: 0.0
+  mass_shell: verify_after_reconstruction
+  scoring_plane: verify_after_reconstruction
+
+# Raw min/max describe only the finite FLUKA sample that was observed. During
+# validation/test they are reported but do not reject. After selection is frozen,
+# the all-clean envelope may reject production proposals as an operational policy.
+empirical_envelope_features: [x, y, z, px, py, pz, E, t]
+empirical_envelope_rule: raw_observed_minmax
+validation_action: diagnostic_only
+production_action: operational_reject
 robust_tail_action: diagnostic_only
 
 reference_scope_policy:

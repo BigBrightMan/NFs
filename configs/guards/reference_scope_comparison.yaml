@@ -1,10 +1,13 @@
-comparison_id: train_vs_all_clean_v3
+comparison_id: train_vs_all_clean_v4
 
-hard_support:
+empirical_support:
   features: [x, y, z, px, py, pz, E, t]
   rule: raw_observed_minmax
   weighting: unweighted_support
   scope_follows_reference_role: true
+  interpretation: finite_sample_observed_envelope_not_physical_support
+  train_action: diagnostic_only
+  all_clean_action: operational_reject
 
 robust_reference:
   weighting: original_fluka_weight

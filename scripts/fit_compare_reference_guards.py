@@ -10,7 +10,7 @@ from pathlib import Path
 
 from flashsim_nf.config import load_yaml
 from flashsim_nf.guards import (
-    HARD_SUPPORT_FEATURES,
+    EMPIRICAL_SUPPORT_FEATURES,
     PHYSICAL_FEATURES,
     compare_reference_guards,
     fit_reference_guard,
@@ -30,23 +30,23 @@ def _write_bound_table(path: Path, report: dict) -> None:
                 "train_physical_upper",
                 "all_physical_lower",
                 "all_physical_upper",
-                "hard_support_train_lower",
-                "hard_support_train_upper",
-                "hard_support_all_lower",
-                "hard_support_all_upper",
+                "observed_train_lower",
+                "observed_train_upper",
+                "observed_all_lower",
+                "observed_all_upper",
             ],
         )
         writer.writeheader()
         for feature in PHYSICAL_FEATURES:
             row = {"feature": feature, **report["bounds"][feature]}
-            if feature in HARD_SUPPORT_FEATURES:
-                support = report["hard_support"][feature]
+            if feature in EMPIRICAL_SUPPORT_FEATURES:
+                support = report["empirical_support"][feature]
                 row.update(
                     {
-                        "hard_support_train_lower": support["train_physical_lower"],
-                        "hard_support_train_upper": support["train_physical_upper"],
-                        "hard_support_all_lower": support["all_physical_lower"],
-                        "hard_support_all_upper": support["all_physical_upper"],
+                        "observed_train_lower": support["train_physical_lower"],
+                        "observed_train_upper": support["train_physical_upper"],
+                        "observed_all_lower": support["all_physical_lower"],
+                        "observed_all_upper": support["all_physical_upper"],
                     }
                 )
             writer.writerow(row)

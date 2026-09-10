@@ -14,7 +14,6 @@ import yaml
 
 from flashsim_nf.pipeline import execute_post_training_config
 
-
 REPOSITORY = Path(__file__).resolve().parents[1]
 ALL_YEARS = (2022, 2023, 2024, 2025)
 ALL_PIPELINES = ("A", "B", "C")
@@ -46,7 +45,7 @@ def _generation_config(
     return (
         output_root
         / "resolved_configs"
-        / "model4_generated_validation_guard_v3"
+        / "model4_generated_validation_guard_v4"
         / dataset_id
         / f"preprocess_{pipeline}_genseed1556.yaml"
     )

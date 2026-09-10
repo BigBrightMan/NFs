@@ -13,7 +13,10 @@ import numpy as np
 from ..data import Model4RootAdapter, RootSplitSpec
 
 PHYSICAL_FEATURES = ("x", "y", "z", "px", "py", "pz", "E", "t")
-HARD_SUPPORT_FEATURES = PHYSICAL_FEATURES
+EMPIRICAL_SUPPORT_FEATURES = PHYSICAL_FEATURES
+# Compatibility for callers written against guard artifact version 2. Raw sample
+# extrema are no longer described as physical hard support in version 3.
+HARD_SUPPORT_FEATURES = EMPIRICAL_SUPPORT_FEATURES
 FEATURE_TRANSFORMS = {
     "x": "identity",
     "y": "identity",
@@ -25,7 +28,7 @@ FEATURE_TRANSFORMS = {
     "t": "signed_log1p",
 }
 FORMAT_NAME = "flashsim_nf.robust_reference_guard"
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -200,7 +203,7 @@ def fit_reference_guard(
             "lower_iqr_fence": lower_fence,
             "upper_iqr_fence": upper_fence,
         }
-    hard_support_bounds = {
+    empirical_support_bounds = {
         feature: {
             "physical_lower": float(np.min(fitted.features[feature])),
             "physical_upper": float(np.max(fitted.features[feature])),
@@ -230,16 +233,37 @@ def fit_reference_guard(
             "upper_quantile": float(upper_quantile),
             "bound_rule": "wider_of_weighted_iqr_fence_and_weighted_quantiles",
             "raw_minmax_used": True,
-            "raw_minmax_usage": "hard_support_all_physical_features",
+            "raw_minmax_usage": "finite_sample_observed_envelope",
             "robust_bound_action": "diagnostic_only",
         },
-        "hard_support": {
-            "contract_id": "per_dataset_all_features_raw_minmax_v1",
+        "physical_contract": {
+            "contract_id": "model4_drop_ze_physics_v1",
+            "source": "model_and_campaign_generation_contract",
+            "constraints": {
+                "finite_output": {"action": "reject"},
+                "energy_lower_exclusive_gev": {"value": 10.0, "action": "reject"},
+                "pz_lower_exclusive_gev": {"value": 0.0, "action": "reject"},
+                "mass_shell": {"action": "verify_after_reconstruction"},
+                "scoring_plane": {"action": "verify_after_reconstruction"},
+            },
+            "note": (
+                "No empirical per-feature maximum is claimed as a physical limit."
+            ),
+        },
+        "empirical_support": {
+            "contract_id": "per_dataset_observed_envelope_v2",
             "rule": "raw_observed_minmax",
             "weighting": "unweighted_support",
             "fit_scope": fit_scope,
             "source_splits": list(source_splits),
-            "feature_bounds": hard_support_bounds,
+            "interpretation": "finite_sample_observed_envelope_not_physical_support",
+            "action": (
+                "diagnostic_only"
+                if selection_allowed
+                else "operational_reject"
+            ),
+            "selection_allowed": selection_allowed,
+            "feature_bounds": empirical_support_bounds,
         },
         "feature_bounds": bounds,
     }
@@ -252,6 +276,20 @@ def _rejection_masks(
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     reasons: dict[str, np.ndarray] = {}
     rejected = np.zeros(data.rows, dtype=bool)
+    physical_matrix = np.column_stack(
+        [
+            np.asarray(data.features[name], dtype=np.float64)
+            for name in PHYSICAL_FEATURES
+        ]
+    )
+    physical_masks = {
+        "physical_nonfinite": ~np.isfinite(physical_matrix).all(axis=1),
+        "physical_E_le_10": np.asarray(data.features["E"], dtype=np.float64) <= 10.0,
+        "physical_pz_le_0": np.asarray(data.features["pz"], dtype=np.float64) <= 0.0,
+    }
+    for name, outside in physical_masks.items():
+        reasons[name] = outside
+        rejected |= outside
     for feature, bound in artifact["feature_bounds"].items():
         transformed = _transform(data.features[feature], str(bound["transform"]))
         outside = (~np.isfinite(transformed)) | (
@@ -259,16 +297,19 @@ def _rejection_masks(
             | (transformed > float(bound["upper"]))
         )
         reasons[f"diagnostic_robust_{feature}_outside"] = outside
-    hard_support = artifact.get("hard_support")
-    if not isinstance(hard_support, dict):
-        raise ValueError("Reference guard has no per-dataset hard-support contract")
-    support_bounds = hard_support.get("feature_bounds")
+    empirical_support = artifact.get("empirical_support")
+    if not isinstance(empirical_support, dict):
+        raise ValueError("Reference guard has no per-dataset empirical envelope")
+    support_bounds = empirical_support.get("feature_bounds")
     if not isinstance(support_bounds, dict):
-        raise ValueError("Reference guard has no hard-support feature bounds")
-    for feature in HARD_SUPPORT_FEATURES:
+        raise ValueError("Reference guard has no empirical-envelope feature bounds")
+    action = empirical_support.get("action")
+    if action not in {"diagnostic_only", "operational_reject"}:
+        raise ValueError("Unsupported empirical-envelope action")
+    for feature in EMPIRICAL_SUPPORT_FEATURES:
         if feature not in support_bounds:
             raise ValueError(
-                f"Reference guard has no hard-support bound for {feature!r}"
+                f"Reference guard has no empirical-envelope bound for {feature!r}"
             )
         bound = support_bounds[feature]
         values = np.asarray(data.features[feature], dtype=np.float64)
@@ -276,8 +317,14 @@ def _rejection_masks(
             (values < float(bound["physical_lower"]))
             | (values > float(bound["physical_upper"]))
         )
-        reasons[f"hard_support_{feature}_outside"] = outside
-        rejected |= outside
+        reason_prefix = (
+            "diagnostic_empirical"
+            if action == "diagnostic_only"
+            else "production_empirical"
+        )
+        reasons[f"{reason_prefix}_{feature}_outside"] = outside
+        if action == "operational_reject":
+            rejected |= outside
     return rejected, reasons
 
 
@@ -367,11 +414,11 @@ def compare_reference_guards(
             "all_physical_lower": all_bound["physical_lower"],
             "all_physical_upper": all_bound["physical_upper"],
         }
-    report["hard_support"] = {}
-    for feature in HARD_SUPPORT_FEATURES:
-        train_bound = train_guard["hard_support"]["feature_bounds"][feature]
-        all_bound = all_guard["hard_support"]["feature_bounds"][feature]
-        report["hard_support"][feature] = {
+    report["empirical_support"] = {}
+    for feature in EMPIRICAL_SUPPORT_FEATURES:
+        train_bound = train_guard["empirical_support"]["feature_bounds"][feature]
+        all_bound = all_guard["empirical_support"]["feature_bounds"][feature]
+        report["empirical_support"][feature] = {
             "train_physical_lower": train_bound["physical_lower"],
             "train_physical_upper": train_bound["physical_upper"],
             "all_physical_lower": all_bound["physical_lower"],

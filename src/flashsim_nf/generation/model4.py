@@ -54,24 +54,37 @@ def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
         raise ValueError(
             f"{purpose} requires the {role} guard; role mismatch: {mismatches}"
         )
-    hard_support = guard.get("hard_support")
-    if not isinstance(hard_support, dict):
+    physical_contract = guard.get("physical_contract")
+    if not isinstance(physical_contract, dict):
         raise ValueError(
-            f"{purpose} guard has no per-dataset physical hard-support contract"
+            f"{purpose} guard has no explicit physical contract"
         )
-    if hard_support.get("rule") != "raw_observed_minmax":
-        raise ValueError("Guard hard support must use raw observed FLUKA min/max")
+    if physical_contract.get("contract_id") != "model4_drop_ze_physics_v1":
+        raise ValueError("Unsupported guard physical contract")
+    empirical_support = guard.get("empirical_support")
+    if not isinstance(empirical_support, dict):
+        raise ValueError("Guard has no empirical observed-envelope contract")
+    if empirical_support.get("rule") != "raw_observed_minmax":
+        raise ValueError("Guard empirical envelope must use raw observed min/max")
     if (
-        hard_support.get("contract_id")
-        != "per_dataset_all_features_raw_minmax_v1"
+        empirical_support.get("contract_id")
+        != "per_dataset_observed_envelope_v2"
     ):
-        raise ValueError("Unsupported guard hard-support contract")
-    if hard_support.get("fit_scope") != guard.get("fit_scope"):
-        raise ValueError("Guard hard-support scope does not match its reference role")
-    bounds = hard_support.get("feature_bounds")
+        raise ValueError("Unsupported empirical observed-envelope contract")
+    if empirical_support.get("fit_scope") != guard.get("fit_scope"):
+        raise ValueError("Empirical-envelope scope does not match its reference role")
+    expected_action = (
+        "diagnostic_only" if purpose in {"validation", "test"}
+        else "operational_reject"
+    )
+    if empirical_support.get("action") != expected_action:
+        raise ValueError(
+            f"{purpose} requires empirical-envelope action={expected_action}"
+        )
+    bounds = empirical_support.get("feature_bounds")
     required_features = {"x", "y", "z", "px", "py", "pz", "E", "t"}
     if not isinstance(bounds, dict) or set(bounds) != required_features:
-        raise ValueError("Guard hard support must contain all eight physical features")
+        raise ValueError("Guard empirical envelope must contain all eight features")
 
 
 def _sha256(path: str | Path) -> str:
@@ -196,7 +209,7 @@ def resolve_generation_config(
         raise ValueError("Guard split ID does not match the training run")
     _validate_guard_role(guard, purpose=purpose)
     plane = fit_scoring_plane(training["data"]["train"]["raw_weight_path"])
-    support_contract = str(guard["hard_support"]["contract_id"])
+    support_contract = str(guard["empirical_support"]["contract_id"])
     output = (
         run
         / "samples"
@@ -243,10 +256,11 @@ def resolve_generation_config(
             "artifact": str(guard_path),
             "artifact_sha256": _sha256(guard_path),
             "maximum_rejection_fraction": 0.05,
-            "detector_bounds": guard["hard_support"]["feature_bounds"],
-            "detector_bounds_status": "active_reference_scope_raw_minmax",
-            "detector_bounds_scope": guard["hard_support"]["fit_scope"],
-            "hard_support_contract": support_contract,
+            "physical_contract": guard["physical_contract"],
+            "empirical_envelope": guard["empirical_support"]["feature_bounds"],
+            "empirical_envelope_action": guard["empirical_support"]["action"],
+            "empirical_envelope_scope": guard["empirical_support"]["fit_scope"],
+            "empirical_envelope_contract": support_contract,
         },
         "generation": {
             "purpose": purpose,
@@ -356,6 +370,7 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
     attempted = 0
     accepted = 0
     reason_counts: dict[str, int] = {}
+    diagnostic_counts: dict[str, int] = {}
     with torch.no_grad():
         while accepted < requested and attempted < maximum_attempts:
             proposal_rows = min(batch_size, maximum_attempts - attempted)
@@ -396,9 +411,13 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
                 (finite & (physical["pz"][:consumed] <= 0.0)).sum()
             )
             for name, mask in reasons.items():
-                reason_counts[name] = reason_counts.get(name, 0) + int(
-                    mask[:consumed].sum()
+                count = int(mask[:consumed].sum())
+                destination = (
+                    diagnostic_counts
+                    if name.startswith("diagnostic_")
+                    else reason_counts
                 )
+                destination[name] = destination.get(name, 0) + count
             positions = np.flatnonzero(keep)
             for name in PHYSICAL_FEATURES:
                 accepted_parts[name].append(physical[name][positions])
@@ -488,6 +507,14 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
             "rejected_rows": attempted - requested,
             "rejection_fraction": rejection_fraction,
             "reason_counts_nonexclusive": reason_counts,
+        },
+        "diagnostics": {
+            "do_not_affect_acceptance": True,
+            "reason_counts_nonexclusive": diagnostic_counts,
+            "interpretation": (
+                "Robust-tail and validation observed-envelope exceedances are "
+                "reported, not treated as proof of physical impossibility."
+            ),
         },
         "normalization": {
             **config["normalization"],

@@ -1,6 +1,6 @@
 ---
 status: confirmed
-last_verified: 2026-09-10
+last_verified: 2026-09-11
 sources:
   - FS/T_DIAGNOSTICS_RUNBOOK.md
   - FS/src/flashsim/model4_evaluation.py
@@ -20,6 +20,9 @@ Tail validation asks whether rare physical regions and generated extremes agree 
 - physics checks for energy, direction, mass shell, and scoring plane.
 
 Robust bounds are diagnostics, not definitions of physical support or the
-physical tail. The active per-dataset guard uses raw FLUKA min/max hard support
-for every physical feature. Rejecting everything outside q0.001–q0.999 would
-remove real reference data by construction.
+physical tail. Raw FLUKA min/max is recorded as a finite-sample observed
+envelope. It is diagnostic-only for validation/test and becomes an operational
+rejection policy only for frozen MuonDIS production. Exact physical constraints
+come from the documented generation and reconstruction contract. Rejecting
+everything outside q0.001–q0.999 would remove real reference data by
+construction.
