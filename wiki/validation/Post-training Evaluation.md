@@ -188,6 +188,19 @@ FS repository is used.
 
 After every candidate has a validation evaluation, freeze the winner:
 
+The short operator interface can run, inspect, and freeze a chosen year without
+manually constructing dataset IDs or output paths:
+
+```bash
+python scripts/model4_workflow.py status
+python scripts/model4_workflow.py generated-validation --years 2023 --pipelines A B C
+python scripts/model4_workflow.py select --years 2023
+python scripts/model4_workflow.py select --all-ready
+```
+
+Add `--dry-run` to generation or selection to print the intended action. Complete
+stages are skipped, while partial immutable stages stop for explicit inspection.
+
 ```bash
 python scripts/select_model4_validation_winner.py \
   --evaluations $candidate_evaluation_jsons \
