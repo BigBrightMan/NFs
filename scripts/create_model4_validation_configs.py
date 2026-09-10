@@ -20,6 +20,9 @@ def main() -> None:
     parser.add_argument(
         "--guard-root", default="/eos/user/t/tanansub/SWAN_projects/NFs_data/guards"
     )
+    parser.add_argument(
+        "--guard-version-directory", default="train_vs_all_clean_v3"
+    )
     parser.add_argument("--expected-count", type=int, default=12)
     parser.add_argument("--generation-seed", type=int, default=1556)
     args = parser.parse_args()
@@ -51,7 +54,7 @@ def main() -> None:
         guard = (
             Path(args.guard_root)
             / dataset_id
-            / "train_vs_all_clean_v2"
+            / args.guard_version_directory
             / "guard_train_ref.json"
         )
         candidates.append((run, dataset_id, pipeline, guard))
@@ -73,7 +76,7 @@ def main() -> None:
         )
         destination = (
             output_root
-            / "resolved_configs/model4_generated_validation"
+            / "resolved_configs/model4_generated_validation_guard_v3"
             / dataset_id
             / f"preprocess_{pipeline}_genseed{args.generation_seed}.yaml"
         )

@@ -1,6 +1,7 @@
 """Generation-guard fitting and comparison components."""
 
 from .reference import (
+    HARD_SUPPORT_FEATURES,
     PHYSICAL_FEATURES,
     ReferenceData,
     compare_reference_guards,
@@ -13,6 +14,7 @@ from .reference import (
 )
 
 __all__ = [
+    "HARD_SUPPORT_FEATURES",
     "PHYSICAL_FEATURES",
     "ReferenceData",
     "compare_reference_guards",

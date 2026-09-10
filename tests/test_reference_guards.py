@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from flashsim_nf.guards import (
+    HARD_SUPPORT_FEATURES,
     PHYSICAL_FEATURES,
     ReferenceData,
     compare_reference_guards,
@@ -69,7 +70,15 @@ def test_train_and_all_reference_guards_have_separate_roles() -> None:
     assert all_guard["selection_allowed"] is False
     assert all_guard["usage_role"] == "production_only"
     assert all_guard["source_splits"] == ["train", "validation", "test"]
-    assert train_guard["settings"]["raw_minmax_used"] is False
+    assert train_guard["settings"]["raw_minmax_used"] is True
+    assert (
+        train_guard["settings"]["raw_minmax_usage"]
+        == "hard_support_all_physical_features"
+    )
+    assert train_guard["settings"]["robust_bound_action"] == "diagnostic_only"
+    assert set(train_guard["hard_support"]["feature_bounds"]) == set(
+        HARD_SUPPORT_FEATURES
+    )
     assert (
         all_guard["feature_bounds"]["x"]["physical_upper"]
         > train_guard["feature_bounds"]["x"]["physical_upper"]
@@ -101,8 +110,25 @@ def test_same_proposal_comparison_reports_overlap_and_weighted_coverage() -> Non
             assert 0.0 <= result["rejected_row_fraction"] <= 1.0
             assert 0.0 <= result["rejected_weight_fraction"] <= 1.0
             assert set(result["reasons"]) == {
-                f"robust_{feature}_outside" for feature in PHYSICAL_FEATURES
+                f"diagnostic_robust_{feature}_outside"
+                for feature in PHYSICAL_FEATURES
+            } | {
+                f"hard_support_{feature}_outside"
+                for feature in HARD_SUPPORT_FEATURES
             }
+
+
+def test_hard_support_uses_raw_minmax_for_each_reference_scope() -> None:
+    splits = {
+        "train": _data("train", np.linspace(0.0, 9.0, 20)),
+        "validation": _data("validation", np.linspace(-3.0, 30.0, 20)),
+        "test": _data("test", np.linspace(-4.0, 40.0, 20)),
+    }
+    train_guard, all_guard = _guards(splits)
+    train_x = train_guard["hard_support"]["feature_bounds"]["x"]
+    all_x = all_guard["hard_support"]["feature_bounds"]["x"]
+    assert train_x == {"physical_lower": 0.0, "physical_upper": 9.0}
+    assert all_x == {"physical_lower": -4.0, "physical_upper": 40.0}
 
 
 def test_all_reference_guard_requires_all_clean_splits() -> None:

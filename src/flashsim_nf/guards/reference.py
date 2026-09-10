@@ -13,6 +13,7 @@ import numpy as np
 from ..data import Model4RootAdapter, RootSplitSpec
 
 PHYSICAL_FEATURES = ("x", "y", "z", "px", "py", "pz", "E", "t")
+HARD_SUPPORT_FEATURES = PHYSICAL_FEATURES
 FEATURE_TRANSFORMS = {
     "x": "identity",
     "y": "identity",
@@ -24,7 +25,7 @@ FEATURE_TRANSFORMS = {
     "t": "signed_log1p",
 }
 FORMAT_NAME = "flashsim_nf.robust_reference_guard"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -199,6 +200,13 @@ def fit_reference_guard(
             "lower_iqr_fence": lower_fence,
             "upper_iqr_fence": upper_fence,
         }
+    hard_support_bounds = {
+        feature: {
+            "physical_lower": float(np.min(fitted.features[feature])),
+            "physical_upper": float(np.max(fitted.features[feature])),
+        }
+        for feature in HARD_SUPPORT_FEATURES
+    }
     selection_allowed = fit_scope == "train"
     artifact: dict[str, Any] = {
         "format": FORMAT_NAME,
@@ -221,7 +229,17 @@ def fit_reference_guard(
             "lower_quantile": float(lower_quantile),
             "upper_quantile": float(upper_quantile),
             "bound_rule": "wider_of_weighted_iqr_fence_and_weighted_quantiles",
-            "raw_minmax_used": False,
+            "raw_minmax_used": True,
+            "raw_minmax_usage": "hard_support_all_physical_features",
+            "robust_bound_action": "diagnostic_only",
+        },
+        "hard_support": {
+            "contract_id": "per_dataset_all_features_raw_minmax_v1",
+            "rule": "raw_observed_minmax",
+            "weighting": "unweighted_support",
+            "fit_scope": fit_scope,
+            "source_splits": list(source_splits),
+            "feature_bounds": hard_support_bounds,
         },
         "feature_bounds": bounds,
     }
@@ -240,7 +258,25 @@ def _rejection_masks(
             (transformed < float(bound["lower"]))
             | (transformed > float(bound["upper"]))
         )
-        reasons[f"robust_{feature}_outside"] = outside
+        reasons[f"diagnostic_robust_{feature}_outside"] = outside
+    hard_support = artifact.get("hard_support")
+    if not isinstance(hard_support, dict):
+        raise ValueError("Reference guard has no per-dataset hard-support contract")
+    support_bounds = hard_support.get("feature_bounds")
+    if not isinstance(support_bounds, dict):
+        raise ValueError("Reference guard has no hard-support feature bounds")
+    for feature in HARD_SUPPORT_FEATURES:
+        if feature not in support_bounds:
+            raise ValueError(
+                f"Reference guard has no hard-support bound for {feature!r}"
+            )
+        bound = support_bounds[feature]
+        values = np.asarray(data.features[feature], dtype=np.float64)
+        outside = (~np.isfinite(values)) | (
+            (values < float(bound["physical_lower"]))
+            | (values > float(bound["physical_upper"]))
+        )
+        reasons[f"hard_support_{feature}_outside"] = outside
         rejected |= outside
     return rejected, reasons
 
@@ -326,6 +362,16 @@ def compare_reference_guards(
         train_bound = train_guard["feature_bounds"][feature]
         all_bound = all_guard["feature_bounds"][feature]
         report["bounds"][feature] = {
+            "train_physical_lower": train_bound["physical_lower"],
+            "train_physical_upper": train_bound["physical_upper"],
+            "all_physical_lower": all_bound["physical_lower"],
+            "all_physical_upper": all_bound["physical_upper"],
+        }
+    report["hard_support"] = {}
+    for feature in HARD_SUPPORT_FEATURES:
+        train_bound = train_guard["hard_support"]["feature_bounds"][feature]
+        all_bound = all_guard["hard_support"]["feature_bounds"][feature]
+        report["hard_support"][feature] = {
             "train_physical_lower": train_bound["physical_lower"],
             "train_physical_upper": train_bound["physical_upper"],
             "all_physical_lower": all_bound["physical_lower"],

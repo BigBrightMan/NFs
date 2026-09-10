@@ -1,4 +1,10 @@
-comparison_id: train_vs_all_clean_v2
+comparison_id: train_vs_all_clean_v3
+
+hard_support:
+  features: [x, y, z, px, py, pz, E, t]
+  rule: raw_observed_minmax
+  weighting: unweighted_support
+  scope_follows_reference_role: true
 
 robust_reference:
   weighting: original_fluka_weight
@@ -7,7 +13,8 @@ robust_reference:
   lower_quantile: 0.0001
   upper_quantile: 0.9999
   bound_rule: wider_of_weighted_iqr_fence_and_weighted_quantiles
-  raw_minmax_used: false
+  raw_minmax_used_for_robust_tail: false
+  action: diagnostic_only
 
 roles:
   train_ref:

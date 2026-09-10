@@ -8,6 +8,7 @@ The technical facts for an individual experiment still belong in its run-local `
 
 ### September
 
+- [[2026-09-10]] — Unified generated-evaluation plots and bulk/tail contract
 - [[2026-09-09]] — Real Model 4 config resolution and read-only preflight
 - [[2026-09-08]] — Initial wiki and NFs foundation
 

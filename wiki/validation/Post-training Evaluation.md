@@ -1,6 +1,6 @@
 ---
 status: implemented
-last_verified: 2026-09-09
+last_verified: 2026-09-10
 ---
 
 # Post-training Evaluation
@@ -51,23 +51,40 @@ The FLUKA train and reference ROOT files must contain `w`. The generated sample
 may use uniform weights or a constant `global_c`; normalized shape metrics are
 identical for those two exports.
 
-The evaluator writes `generated_evaluation.json`, `_SUCCESS.json`, and five
-default plot pages. Metrics include weighted FGD, covariance distance,
+The evaluator writes `generated_evaluation.json`, `bulk_tail_metrics.csv`,
+`_SUCCESS.json`, and six default plot pages. Metrics include weighted FGD, covariance distance,
 approximate multivariate Energy Distance, sliced Wasserstein, weighted HGB
 C2ST, Pearson/Spearman correlation differences, per-feature weighted KS and
-normalized Wasserstein, and two-sided tail diagnostics.
+normalized Wasserstein, explicit train-defined bulk diagnostics, and two-sided
+tail diagnostics.
 
 Spearman uses weighted empirical-CDF mid-ranks for the FLUKA reference and the
 corresponding uniform mid-ranks for generated events. This matches the physical
 weighted target density without making `w` an NF feature. Reports using this
-definition declare generated-evaluation metric-contract version 2; the winner
+definition declare generated-evaluation metric-contract version 3; the winner
 selector refuses to mix them with older reports.
 
-The figures comprise combined core and full-minmax feature pages, Pearson and
-Spearman correlation comparisons, and tail CCDFs. `E` is displayed as
-`log10(E/GeV)` only at plotting time. FLUKA is labelled `FLUKA (simulation)`,
-generated data is `FlashSim (generated)`, density axes use `Density [a.u.]`,
-and ratio panels show `(FlashSim - FLUKA) / FLUKA`.
+The figures comprise a train-weighted q0.001-q0.999 **bulk** page, a full-range
+log-y **tail** page, a dedicated physical-to-`log10(E/GeV)` bulk/tail page,
+numeric Pearson and Spearman correlation comparisons, and tail CCDFs. The ROOT
+file retains physical `E`; the logarithm is applied only while rendering the
+dedicated energy page. FLUKA is blue and labelled `FLUKA (simulation)`,
+generated data is orange and labelled `FlashSim (generated)`, density axes use
+`Density [a.u.]`, and ratio panels show red points for
+`(FlashSim - FLUKA) / FLUKA` with propagated sum-of-squared-weight statistical
+uncertainty where the reference denominator is nonzero.
+
+Every page uses the same header template and reports both event counts. The
+watermark occupies a separate upper-left figure margin so it does not cover the
+title or data. The Pearson and Spearman heatmaps write the numerical coefficient
+in every cell for FLUKA, FlashSim, and their difference.
+
+Bulk and tail evidence are intentionally separate. `bulk_tail_metrics.csv`
+contains, per feature, bulk support and mass, bulk-conditional KS/Wasserstein,
+tail thresholds, tail mass ratios, effective sample sizes, and conditional tail
+metrics. This prevents a high-statistics bulk agreement from hiding a tail
+failure, while low-ESS extremes remain explicitly marked as insufficient
+statistics.
 
 Tail thresholds and normalization scales are fitted from the train split. For
 each feature and threshold, the report records reference/generated tail mass,
@@ -102,7 +119,9 @@ python scripts/create_model4_reference_guards.py \
 
 The command reads the frozen FLUKA train, validation, and test ROOT files. It
 writes `guard_train_ref.json` from train only and `guard_all_ref.json` from all
-three clean splits. Complete existing outputs are verified and skipped;
+three clean splits. Each artifact contains separate raw-min/max hard support for
+all eight physical features for its dataset/year. Weighted robust-tail bounds
+remain diagnostic-only. Complete existing outputs are verified and skipped;
 incomplete or conflicting outputs stop the matrix before new work begins.
 
 For the completed four-year baseline matrix (A/B/C for each year), create the
@@ -122,7 +141,7 @@ submit the exact matrix:
 
 ```bash
 module load lxbatch/eossubmit
-config_root=/eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/model4_generated_validation
+config_root=/eos/user/t/tanansub/SWAN_projects/NFs_output/resolved_configs/model4_generated_validation_guard_v3
 
 python scripts/submit_model4_post_training_matrix.py \
   --config-root "$config_root" \
@@ -135,7 +154,7 @@ python scripts/submit_model4_post_training_matrix.py \
 ```
 
 Each job performs training diagnostics if needed, generated-validation sampling,
-physical reconstruction and guards, metrics, and the five validation plot pages.
+physical reconstruction and guards, metrics, and the six validation plot pages.
 It does not read the test split for model selection.
 
 Resolve an immutable generation config from a completed training run:
@@ -162,7 +181,8 @@ python scripts/submit_model4_post_training.py \
 The worker performs training diagnostics if absent, loads `best_model.pt`,
 inverse-transforms with the frozen A/B/C v3 metadata, reconstructs `z` from a
 train-fitted scoring plane and `E` from the muon mass shell, applies the
-train-reference robust guard, writes identical-kinematics `w1` and `global_c`
+train-reference per-dataset hard-support guard, writes identical-kinematics
+`w1` and `global_c`
 ROOT files, then evaluates against validation. No runtime import from the old
 FS repository is used.
 

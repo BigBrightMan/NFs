@@ -248,7 +248,7 @@ Produces:
 - weight distribution, `sum_w`, extrema, spikes, and effective sample size;
 - train/validation/test comparison;
 - A/B/C model-space diagnostics;
-- full min-max and q0.001–q0.999 core plots;
+- full-range tail and train-weighted q0.001–q0.999 bulk plots;
 - Pearson/Spearman and 2D diagnostics;
 - [[CCDF]] and tail summaries;
 - inverse-transform round-trip checks.
@@ -299,7 +299,7 @@ Required evidence:
 - [[Correlation Validation]];
 - [[Tail Validation]] and [[CCDF]];
 - weight normalization and effective sample statistics;
-- combined core/full figures and optional separate feature plots.
+- combined bulk/tail figures and optional separate feature plots.
 
 This stage selects preprocessing and architecture behavior, not the final test.
 

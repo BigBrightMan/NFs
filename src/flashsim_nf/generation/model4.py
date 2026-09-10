@@ -54,6 +54,24 @@ def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
         raise ValueError(
             f"{purpose} requires the {role} guard; role mismatch: {mismatches}"
         )
+    hard_support = guard.get("hard_support")
+    if not isinstance(hard_support, dict):
+        raise ValueError(
+            f"{purpose} guard has no per-dataset physical hard-support contract"
+        )
+    if hard_support.get("rule") != "raw_observed_minmax":
+        raise ValueError("Guard hard support must use raw observed FLUKA min/max")
+    if (
+        hard_support.get("contract_id")
+        != "per_dataset_all_features_raw_minmax_v1"
+    ):
+        raise ValueError("Unsupported guard hard-support contract")
+    if hard_support.get("fit_scope") != guard.get("fit_scope"):
+        raise ValueError("Guard hard-support scope does not match its reference role")
+    bounds = hard_support.get("feature_bounds")
+    required_features = {"x", "y", "z", "px", "py", "pz", "E", "t"}
+    if not isinstance(bounds, dict) or set(bounds) != required_features:
+        raise ValueError("Guard hard support must contain all eight physical features")
 
 
 def _sha256(path: str | Path) -> str:
@@ -178,7 +196,15 @@ def resolve_generation_config(
         raise ValueError("Guard split ID does not match the training run")
     _validate_guard_role(guard, purpose=purpose)
     plane = fit_scoring_plane(training["data"]["train"]["raw_weight_path"])
-    output = run / "samples" / purpose / f"generation_seed_{seed}" / "guard_reject_v2"
+    support_contract = str(guard["hard_support"]["contract_id"])
+    output = (
+        run
+        / "samples"
+        / purpose
+        / f"generation_seed_{seed}"
+        / "guard_reject_v2"
+        / support_contract
+    )
     if output.exists():
         raise FileExistsError(f"Generation output already exists: {output}")
     frozen = Path(frozen_selection).resolve() if frozen_selection else None
@@ -217,8 +243,10 @@ def resolve_generation_config(
             "artifact": str(guard_path),
             "artifact_sha256": _sha256(guard_path),
             "maximum_rejection_fraction": 0.05,
-            "detector_bounds": None,
-            "detector_bounds_status": "disabled_pending_authoritative_bounds",
+            "detector_bounds": guard["hard_support"]["feature_bounds"],
+            "detector_bounds_status": "active_reference_scope_raw_minmax",
+            "detector_bounds_scope": guard["hard_support"]["fit_scope"],
+            "hard_support_contract": support_contract,
         },
         "generation": {
             "purpose": purpose,
@@ -347,8 +375,8 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
                 weights=np.ones(proposal_rows, dtype=np.float64),
                 label="generated_proposals",
             )
-            robust_rejected, reasons = guard_rejection_masks(reference, guard)
-            keep = domain & ~robust_rejected
+            guard_rejected, reasons = guard_rejection_masks(reference, guard)
+            keep = domain & ~guard_rejected
             remaining = requested - accepted
             accepted_positions = np.flatnonzero(keep)
             consumed = (

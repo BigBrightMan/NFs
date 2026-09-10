@@ -43,6 +43,10 @@ def test_identical_generated_arrays_have_zero_deterministic_distances() -> None:
     assert result["global_multivariate"]["frechet_gaussian_distance"] < 1e-10
     assert result["global_multivariate"]["sliced_wasserstein"]["mean"] < 1e-10
     assert all(value["weighted_ks"] == 0 for value in result["marginal"].values())
+    assert all(
+        value["conditional_weighted_ks"] == 0
+        for value in result["bulk"].values()
+    )
     assert "q0.9900" in result["tails"]["E"]["levels"]
 
 
@@ -113,6 +117,8 @@ def _write_root(path, *, rows: int, seed: int, include_weights: bool) -> None:
         name: rng.normal(size=rows)
         for name in ("x", "y", "z", "E", "pz", "px", "py", "t")
     }
+    branches["E"] = rng.lognormal(mean=4.0, sigma=0.5, size=rows)
+    branches["pz"] = rng.lognormal(mean=3.8, sigma=0.5, size=rows)
     if include_weights:
         branches["w"] = rng.uniform(0.1, 1.0, size=rows)
     with uproot.recreate(path) as destination:
@@ -139,10 +145,19 @@ def test_root_evaluation_requires_fluka_weights_and_writes_immutable_report(
         settings=_settings(),
     )
     assert report["format"] == "flashsim_nf.generated_evaluation"
-    assert report["format_version"] == 2
+    assert report["format_version"] == 3
     assert report["inputs"]["weight_sources"]["reference"] == "ROOT branch w"
     assert report["inputs"]["weight_sources"]["generated"] == "uniform"
     assert (output / "generated_evaluation.json").is_file()
+    assert (output / "bulk_tail_metrics.csv").is_file()
+    assert {
+        "all_features_bulk_q001_q999.png",
+        "all_features_tail_full_range_logy.png",
+        "energy_log10_bulk_tail.png",
+        "pearson_correlation.png",
+        "spearman_correlation.png",
+        "tail_ccdf.png",
+    } == {path.name for path in (output / "plots").glob("*.png")}
     assert (output / "_SUCCESS.json").is_file()
     with pytest.raises(FileExistsError):
         evaluate_generated_root_files(

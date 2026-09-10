@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import shutil
@@ -19,7 +20,7 @@ from .plots import write_generated_evaluation_plots
 
 FEATURES_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
 EVALUATION_FORMAT = "flashsim_nf.generated_evaluation"
-EVALUATION_FORMAT_VERSION = 2
+EVALUATION_FORMAT_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -341,6 +342,56 @@ def _tail_ess(mask: np.ndarray, weights: np.ndarray) -> float:
     return _effective_sample_size(weights[mask])
 
 
+def _bulk_metrics(
+    train: np.ndarray,
+    reference: np.ndarray,
+    generated: np.ndarray,
+    train_weights: np.ndarray,
+    reference_weights: np.ndarray,
+    generated_weights: np.ndarray,
+) -> dict[str, Any]:
+    """Evaluate the train-defined weighted q0.001--q0.999 bulk explicitly."""
+
+    report: dict[str, Any] = {}
+    for index, feature in enumerate(FEATURES_8D):
+        lower, upper = weighted_quantile(
+            train[:, index], train_weights, (0.001, 0.999)
+        )
+        width = max(float(upper - lower), np.finfo(float).eps)
+        reference_mask = (reference[:, index] >= lower) & (
+            reference[:, index] <= upper
+        )
+        generated_mask = (generated[:, index] >= lower) & (
+            generated[:, index] <= upper
+        )
+        if not np.any(reference_mask) or not np.any(generated_mask):
+            raise ValueError(f"Empty train-defined bulk for feature {feature!r}")
+        distance = float(
+            wasserstein_distance(
+                reference[reference_mask, index],
+                generated[generated_mask, index],
+                u_weights=reference_weights[reference_mask],
+                v_weights=generated_weights[generated_mask],
+            )
+        )
+        report[feature] = {
+            "train_thresholds": {"lower": float(lower), "upper": float(upper)},
+            "reference_mass": _weighted_mass(reference_mask, reference_weights),
+            "generated_mass": _weighted_mass(generated_mask, generated_weights),
+            "reference_ess": _tail_ess(reference_mask, reference_weights),
+            "generated_ess": _tail_ess(generated_mask, generated_weights),
+            "conditional_weighted_ks": weighted_ks_statistic(
+                reference[reference_mask, index],
+                generated[generated_mask, index],
+                reference_weights[reference_mask],
+                generated_weights[generated_mask],
+            ),
+            "conditional_weighted_wasserstein": distance,
+            "conditional_normalized_weighted_wasserstein": distance / width,
+        }
+    return report
+
+
 def _ratio(numerator: float, denominator: float) -> float | None:
     return float(numerator / denominator) if denominator > 0 else None
 
@@ -359,8 +410,8 @@ def _tail_metrics(
         train_values = train[:, index]
         reference_values = reference[:, index]
         generated_values = generated[:, index]
-        train_core = weighted_quantile(train_values, train_weights, (0.001, 0.999))
-        robust_width = max(float(train_core[1] - train_core[0]), np.finfo(float).eps)
+        train_bulk = weighted_quantile(train_values, train_weights, (0.001, 0.999))
+        robust_width = max(float(train_bulk[1] - train_bulk[0]), np.finfo(float).eps)
         feature_levels: dict[str, Any] = {}
         for quantile in settings.tail_quantiles:
             lower_probability = 1.0 - quantile
@@ -391,7 +442,7 @@ def _tail_metrics(
             generated_upper_ess = _tail_ess(generated_upper, generated_weights)
             feature_levels[f"q{quantile:.4f}"] = {
                 "train_thresholds": {"lower": float(lower), "upper": float(upper)},
-                "quantile_error_over_train_core_width": {
+                "quantile_error_over_train_bulk_width": {
                     "lower": float(
                         (generated_quantiles[0] - reference_quantiles[0]) / robust_width
                     ),
@@ -596,8 +647,8 @@ def evaluate_generated_arrays(
 
     marginal = {}
     for index, feature in enumerate(FEATURES_8D):
-        train_core = weighted_quantile(train[:, index], train_weights, (0.001, 0.999))
-        width = max(float(train_core[1] - train_core[0]), np.finfo(float).eps)
+        train_bulk = weighted_quantile(train[:, index], train_weights, (0.001, 0.999))
+        width = max(float(train_bulk[1] - train_bulk[0]), np.finfo(float).eps)
         distance = float(
             wasserstein_distance(
                 reference[:, index],
@@ -615,7 +666,7 @@ def evaluate_generated_arrays(
             ),
             "weighted_wasserstein": distance,
             "normalized_weighted_wasserstein": distance / width,
-            "train_core_width_q001_q999": width,
+            "train_bulk_width_q001_q999": width,
         }
 
     return {
@@ -665,6 +716,14 @@ def evaluate_generated_arrays(
             reference_weights,
             generated_weights,
         ),
+        "bulk": _bulk_metrics(
+            train,
+            reference,
+            generated,
+            train_weights,
+            reference_weights,
+            generated_weights,
+        ),
         "marginal": marginal,
         "tails": _tail_metrics(
             train,
@@ -676,6 +735,78 @@ def evaluate_generated_arrays(
             settings,
         ),
     }
+
+
+def _write_bulk_tail_table(path: Path, evaluation: dict[str, Any]) -> None:
+    fieldnames = [
+        "feature",
+        "region",
+        "level",
+        "lower_threshold",
+        "upper_threshold",
+        "reference_mass",
+        "generated_mass",
+        "generated_over_reference_mass",
+        "reference_ess",
+        "generated_ess",
+        "weighted_ks",
+        "normalized_weighted_wasserstein",
+        "quantile_error_over_bulk_width",
+        "insufficient_statistics",
+    ]
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        for feature in FEATURES_8D:
+            bulk = evaluation["bulk"][feature]
+            writer.writerow(
+                {
+                    "feature": feature,
+                    "region": "bulk",
+                    "level": "q0.001-q0.999",
+                    "lower_threshold": bulk["train_thresholds"]["lower"],
+                    "upper_threshold": bulk["train_thresholds"]["upper"],
+                    "reference_mass": bulk["reference_mass"],
+                    "generated_mass": bulk["generated_mass"],
+                    "reference_ess": bulk["reference_ess"],
+                    "generated_ess": bulk["generated_ess"],
+                    "weighted_ks": bulk["conditional_weighted_ks"],
+                    "normalized_weighted_wasserstein": bulk[
+                        "conditional_normalized_weighted_wasserstein"
+                    ],
+                    "insufficient_statistics": False,
+                }
+            )
+            for level, level_values in evaluation["tails"][feature]["levels"].items():
+                thresholds = level_values["train_thresholds"]
+                quantile_errors = level_values[
+                    "quantile_error_over_train_bulk_width"
+                ]
+                for side in ("lower", "upper"):
+                    values = level_values[side]
+                    writer.writerow(
+                        {
+                            "feature": feature,
+                            "region": f"tail_{side}",
+                            "level": level,
+                            "lower_threshold": thresholds["lower"],
+                            "upper_threshold": thresholds["upper"],
+                            "reference_mass": values["reference_mass"],
+                            "generated_mass": values["generated_mass"],
+                            "generated_over_reference_mass": values[
+                                "generated_over_reference_mass"
+                            ],
+                            "reference_ess": values["reference_ess"],
+                            "generated_ess": values["generated_ess"],
+                            "normalized_weighted_wasserstein": values[
+                                "conditional_normalized_wasserstein"
+                            ],
+                            "quantile_error_over_bulk_width": quantile_errors[side],
+                            "insufficient_statistics": values[
+                                "insufficient_statistics"
+                            ],
+                        }
+                    )
 
 
 def _load_root(
@@ -795,8 +926,10 @@ def evaluate_generated_root_files(
         raise FileExistsError(partial)
     try:
         temporary_plots = write_generated_evaluation_plots(
+            train=train,
             reference=reference,
             generated=generated,
+            train_weights=train_weights,
             reference_weights=reference_weights,
             generated_weights=generated_weights,
             report=report,
@@ -811,6 +944,12 @@ def evaluate_generated_root_files(
             str((destination / Path(path).relative_to(partial)).resolve())
             for path in temporary_plots
         ]
+        _write_bulk_tail_table(partial / "bulk_tail_metrics.csv", evaluation)
+        report["tables"] = {
+            "bulk_tail_metrics": str(
+                (destination / "bulk_tail_metrics.csv").resolve()
+            )
+        }
         write_json_atomic(partial / "generated_evaluation.json", report)
         write_json_atomic(
             partial / "_SUCCESS.json",

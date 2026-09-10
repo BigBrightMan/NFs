@@ -17,6 +17,21 @@ def _score(payload: dict[str, Any]) -> dict[str, float]:
     evaluation = payload["evaluation"]
     global_metrics = evaluation["global_multivariate"]
     marginal = evaluation["marginal"]
+    bulk = evaluation["bulk"]
+    tail_mass_errors = []
+    for feature in evaluation["feature_order"]:
+        level = evaluation["tails"][feature]["levels"]["q0.9900"]
+        for side in ("lower", "upper"):
+            values = level[side]
+            ratio = values["generated_over_reference_mass"]
+            if (
+                not values["insufficient_statistics"]
+                and ratio is not None
+                and ratio > 0
+            ):
+                tail_mass_errors.append(abs(float(np.log10(ratio))))
+    if not tail_mass_errors:
+        raise ValueError("No statistically sufficient q0.99 tail metric is available")
     return {
         "frechet_gaussian_distance": float(global_metrics["frechet_gaussian_distance"]),
         "energy_distance": float(
@@ -33,6 +48,22 @@ def _score(payload: dict[str, Any]) -> dict[str, float]:
                     for values in marginal.values()
                 ]
             )
+        ),
+        "mean_bulk_conditional_weighted_ks": float(
+            np.mean(
+                [values["conditional_weighted_ks"] for values in bulk.values()]
+            )
+        ),
+        "mean_bulk_conditional_normalized_weighted_wasserstein": float(
+            np.mean(
+                [
+                    values["conditional_normalized_weighted_wasserstein"]
+                    for values in bulk.values()
+                ]
+            )
+        ),
+        "mean_q99_tail_absolute_log10_mass_ratio": float(
+            np.mean(tail_mass_errors)
         ),
         "c2st_distance_from_half": float(
             global_metrics["c2st"]["distance_from_ideal_half"]
@@ -57,10 +88,10 @@ def main() -> None:
         payload = json.loads(path.read_text())
         if (
             payload.get("format") != "flashsim_nf.generated_evaluation"
-            or payload.get("format_version") != 2
+            or payload.get("format_version") != 3
         ):
             raise ValueError(
-                f"Unsupported evaluation metric contract (need version 2): {path}"
+                f"Unsupported evaluation metric contract (need version 3): {path}"
             )
         if payload.get("status") != "complete":
             raise ValueError(f"Incomplete evaluation: {path}")

@@ -4,13 +4,15 @@ policy:
   robust_mode: reject
   mass_shell_mode: reject
   scoring_plane_mode: reject
-  detector_mode: disabled_pending_authoritative_bounds
+  physical_support_mode: reference_scope_raw_minmax
   maximum_rejection_fraction: 0.05
 
-# Detector x/y bounds are dataset-specific and must be supplied by an
-# authoritative campaign configuration. z is constrained by the scoring plane.
-requires_dataset_detector_bounds: [x, y]
-z_constraint: train_fitted_scoring_plane
+# Every dataset/year receives its own empirical hard support. The train-reference
+# artifact is used for selection/test; the all-clean artifact is production-only.
+hard_support_features: [x, y, z, px, py, pz, E, t]
+hard_support_rule: raw_observed_minmax
+z_constraint: train_fitted_scoring_plane_and_reference_scope_raw_minmax
+robust_tail_action: diagnostic_only
 
 reference_scope_policy:
   selection_guard: train_ref

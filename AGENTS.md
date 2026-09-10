@@ -40,6 +40,29 @@
 - Full-state means model, optimizer, scheduler, optional AMP scaler, early-stopping state, best validation loss, RNG, data-loader RNG, and resolved config.
 - Completed run directories are immutable. Resumed training must branch to a new absent run directory.
 
+## Model 4 evaluation-plot contract
+
+- Use one shared figure template for generated-validation and final-test plots.
+- Put an italic, bold `FlashSim in progress` watermark in the upper-left figure
+  margin. It must not overlap the title, legend, axes, or plotted data.
+- Every figure header states year/dataset, evaluation split, Model 4,
+  preprocessing pipeline, feature ablation, generated event count, and FLUKA
+  reference event count.
+- Use blue for `FLUKA (simulation)`, orange for `FlashSim (generated)`, and red
+  points for `(FlashSim - FLUKA) / FLUKA`.
+- Ratio uncertainties are statistical sum-of-squared-weight approximations and
+  must be drawn as error bars where the FLUKA denominator is nonzero.
+- Use bold plot titles and axis labels. Density axes are `Density [a.u.]`.
+- Call q0.001-q0.999 the **bulk**, never the core. The bulk interval is fitted
+  with FLUKA train weights. The **tail** page uses the full observed range with
+  log-y, and tail evidence also includes CCDF and bulk/tail metric tables.
+- Plot physical `E` on the common feature pages and also create a dedicated
+  `log10(E/GeV)` bulk-and-tail page. Plotting transforms never modify ROOT data.
+- Pearson and Spearman pages compare weighted FLUKA with FlashSim and annotate
+  every matrix cell numerically, including the FlashSim-minus-FLUKA matrix.
+- Do not create duplicate shape plots for `w1` and `global_c`, because their
+  generated kinematics are identical.
+
 ## Migration
 
 - Record every port in `MIGRATION_MANIFEST.yaml`.

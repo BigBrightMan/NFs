@@ -27,11 +27,17 @@ def _complete_output(path: Path, dataset_id: str) -> bool:
     all_clean = json.loads(required[1].read_text())
     return (
         train.get("dataset_id") == dataset_id
+        and train.get("format_version") == 2
         and train.get("fit_scope") == "train"
         and train.get("selection_allowed") is True
+        and train.get("hard_support", {}).get("contract_id")
+        == "per_dataset_all_features_raw_minmax_v1"
         and all_clean.get("dataset_id") == dataset_id
+        and all_clean.get("format_version") == 2
         and all_clean.get("fit_scope") == "all_clean_splits"
         and all_clean.get("selection_allowed") is False
+        and all_clean.get("hard_support", {}).get("contract_id")
+        == "per_dataset_all_features_raw_minmax_v1"
     )
 
 
@@ -42,11 +48,16 @@ def main() -> None:
     parser.add_argument(
         "--guard-root", default="/eos/user/t/tanansub/SWAN_projects/NFs_data/guards"
     )
+    parser.add_argument(
+        "--settings", default="configs/guards/reference_scope_comparison.yaml"
+    )
     parser.add_argument("--expected-count", type=int, default=4)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     config_paths = sorted(Path(args.dataset_config_root).glob("fluka*.yaml"))
+    comparison = load_yaml(args.settings)
+    comparison_id = str(comparison["comparison_id"])
     if len(config_paths) != args.expected_count:
         raise RuntimeError(
             f"Expected {args.expected_count} dataset configs, found {len(config_paths)}"
@@ -70,7 +81,7 @@ def main() -> None:
         output = (
             Path(args.guard_root).resolve()
             / dataset_id
-            / "train_vs_all_clean_v2"
+            / comparison_id
         )
         if output.exists() and not _complete_output(output, dataset_id):
             failures.append(f"{dataset_id}: incomplete/conflicting output {output}")
@@ -117,6 +128,8 @@ def main() -> None:
                 str(plan["prepared_directory"]),
                 "--output-directory",
                 str(plan["output_directory"]),
+                "--settings",
+                str(Path(args.settings).resolve()),
             ],
             check=True,
         )

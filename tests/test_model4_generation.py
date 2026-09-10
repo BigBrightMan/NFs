@@ -18,11 +18,11 @@ pytest.importorskip("nflows")
 
 
 def _write_raw(path: Path, rows: int) -> None:
-    x = np.linspace(-1.0, 1.0, rows)
-    y = np.linspace(1.0, -1.0, rows)
-    pz = np.linspace(18.0, 22.0, rows)
-    px = np.linspace(-0.2, 0.2, rows)
-    py = np.linspace(0.2, -0.2, rows)
+    x = np.linspace(-10.0, 10.0, rows)
+    y = np.linspace(10.0, -10.0, rows)
+    pz = np.linspace(5.0, 100.0, rows)
+    px = np.linspace(-2.0, 2.0, rows)
+    py = np.linspace(2.0, -2.0, rows)
     mass = 0.1056583755
     values = {
         "run": np.ones(rows, dtype=np.int32),
