@@ -1,10 +1,10 @@
 preprocessing_id: D
-display_name: Pipeline A with log longitudinal momentum
+display_name: Pipeline A with log energy and log longitudinal momentum
 fit_split: train
 transforms:
   spatial: minmax_logit
   transverse_momentum: signed_log1p
-  energy: box_cox
+  energy: natural_log
   longitudinal_momentum: natural_log
   time: identity
   final: standardize

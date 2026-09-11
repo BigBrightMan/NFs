@@ -160,7 +160,9 @@ def test_resolve_and_generate_model4_pair(tmp_path):
         )
         assert np.allclose(constant["nt"]["w"].array(library="np"), 12 * 0.25 / 8)
     assert report["reconstruction"]["scoring_plane"]["fit_rows"] == 40
-    assert report["guard"]["empirical_envelope_action"] == "diagnostic_only"
+    # The train-fitted observed FLUKA envelope rejects by default, which is what
+    # bounds generated support to the region real FLUKA data covers.
+    assert report["guard"]["empirical_envelope_action"] == "operational_reject"
     assert report["diagnostics"]["do_not_affect_acceptance"] is True
 
     split_references = {}
@@ -258,9 +260,10 @@ def test_mass_shell_tolerance_is_scale_free_across_the_energy_range():
 def test_empirical_envelope_excursion_reports_unbounded_generation():
     """A diagnostic-only envelope must still leave excursion evidence behind.
 
-    With a train-fitted guard the observed min/max is `diagnostic_only`, so nothing
-    rejects rows above it. The manifest has to record how far past FLUKA's observed
-    support the accepted sample went, or the extrapolation is invisible.
+    `operational_reject` is the default, but the monitoring-only policy stays
+    available and nothing rejects rows above the envelope under it. The manifest has
+    to record how far past FLUKA's observed support the sample went, or the
+    extrapolation is invisible.
     """
 
     from flashsim_nf.generation.model4 import _empirical_envelope_excursion

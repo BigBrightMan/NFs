@@ -47,11 +47,12 @@ def _empirical_envelope_excursion(
 ) -> dict[str, Any]:
     """Report how far accepted rows travelled beyond the observed FLUKA envelope.
 
-    When the guard is train-fitted the observed min/max is `diagnostic_only`, so
-    nothing bounds the generated support from above. That is the intended policy —
-    a finite-sample envelope is not a physical limit — but it means an unbounded
-    inverse transform can place rows far outside anything FLUKA produced. Record the
-    excursion so the manifest carries the evidence instead of leaving it implicit.
+    The envelope action is a recorded policy. Under `operational_reject`, the default,
+    every accepted row is inside the observed FLUKA support and the excursions are
+    zero, which is itself the evidence that the bound held. Under `diagnostic_only`
+    nothing bounds the generated support from above, and an unbounded inverse
+    transform such as `exp` can place rows far outside anything FLUKA produced. Record
+    the excursion either way so the manifest carries the evidence explicitly.
     """
 
     support = guard.get("empirical_support") or {}

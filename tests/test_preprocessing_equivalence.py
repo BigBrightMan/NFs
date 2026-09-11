@@ -157,3 +157,58 @@ def test_pipeline_e_changes_only_energy_relative_to_pipeline_a() -> None:
         transformed_e[:, FEATURES.index("E")],
         transformed_a[:, FEATURES.index("E")],
     )
+
+
+def test_pipeline_d_and_e_configs_match_their_built_chains() -> None:
+    """`configs/preprocessing/*.yaml` is copied into every resolved training config as
+    provenance, so a drift between the declared transform and the built chain would
+    stamp a false claim onto every run. D declaring `box_cox` for energy while the
+    code applied `log` is exactly that failure.
+    """
+
+    import yaml
+
+    chain_for = {
+        "minmax_logit": ["MinMax", "LogitClip", "Standardize"],
+        "signed_log1p": ["SignedLog1p", "Standardize"],
+        "natural_log": ["PositiveLog", "Standardize"],
+        "box_cox": ["BoxCox", "Standardize"],
+        "identity": ["Identity", "Standardize"],
+    }
+    slot_feature = {
+        "spatial": "x",
+        "transverse_momentum": "px",
+        "energy": "E",
+        "longitudinal_momentum": "pz",
+        "time": "t",
+    }
+    project = Path(__file__).resolve().parents[1]
+    for pipeline in ("D", "E"):
+        definition = yaml.safe_load(
+            (project / "configs/preprocessing" / f"{pipeline}.yaml").read_text()
+        )
+        assert definition["preprocessing_id"] == pipeline
+        preprocessor = build_preprocessor(pipeline, FEATURES)
+        for slot, feature in slot_feature.items():
+            declared = definition["transforms"][slot]
+            built = [
+                type(component).__name__
+                for component in preprocessor.chains[feature].components
+            ]
+            assert built == chain_for[declared], (
+                f"{pipeline}.yaml declares {slot}={declared} for {feature}, "
+                f"but the built chain is {built}"
+            )
+
+
+def test_pipeline_d_declares_natural_log_for_both_energy_variables() -> None:
+    """Direct guard for the drift this test was added to catch."""
+
+    import yaml
+
+    project = Path(__file__).resolve().parents[1]
+    definition = yaml.safe_load(
+        (project / "configs/preprocessing/D.yaml").read_text()
+    )
+    assert definition["transforms"]["energy"] == "natural_log"
+    assert definition["transforms"]["longitudinal_momentum"] == "natural_log"

@@ -118,15 +118,14 @@ def test_same_proposal_comparison_reports_overlap_and_weighted_coverage() -> Non
             result = report["reference"][split][guard]
             assert 0.0 <= result["rejected_row_fraction"] <= 1.0
             assert 0.0 <= result["rejected_weight_fraction"] <= 1.0
+            # Both guards now reject on their observed envelope, so both report the
+            # `production_empirical_*` reason names. The robust IQR fences stay
+            # diagnostic for either scope.
             assert set(result["reasons"]) == {
                 f"diagnostic_robust_{feature}_outside"
                 for feature in PHYSICAL_FEATURES
             } | {
-                (
-                    f"diagnostic_empirical_{feature}_outside"
-                    if guard == "train_ref"
-                    else f"production_empirical_{feature}_outside"
-                )
+                f"production_empirical_{feature}_outside"
                 for feature in EMPIRICAL_SUPPORT_FEATURES
             } | {"physical_nonfinite", "physical_E_le_10", "physical_pz_le_0"}
 
