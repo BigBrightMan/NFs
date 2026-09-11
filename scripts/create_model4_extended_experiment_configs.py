@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create Pipeline D, drop-z-pz, and 2025 full-8D experiment configs.
+"""Create Pipeline D, 2022 drop-z-pz, and 2025 full-8D experiment configs.
 
 Pipeline D is Pipeline A with `E` and `pz` both on natural log. Under `drop_ze`
 the trained difference from A is `pz` alone; under `drop_z_pz` it is `E` alone.
@@ -51,6 +51,10 @@ def main() -> None:
             config_output_directory=destination / "drop_z_pz",
             pipelines=("A", "D"),
             ablation="drop_z_pz",
+            # 2022 only. It has the largest train split (1.08M rows) and the largest
+            # reference ESS (33,915), so a Box-Cox(E) versus log(E) difference is the
+            # easiest to separate from finite-sample noise there.
+            dataset_ids=("fluka2022_muons_down_tclean_v1",),
             preprocessing_data_root=args.data_root,
         )
     )

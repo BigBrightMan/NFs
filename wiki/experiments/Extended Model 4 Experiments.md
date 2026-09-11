@@ -21,11 +21,13 @@ does not alter existing A/B/C runs or frozen splits.
    feature. One fitted pipeline therefore serves both experiments. It is fitted
    on train and transforms train and validation only. Native artifacts are
    written to `NFs_data`.
-3. **`drop_z_pz`, all years.** Run Pipeline A and Pipeline D for every year.
-   The NF learns `(x,y,E,px,py,t)`; `z` is reconstructed from the train-fitted
-   scoring plane and positive `pz` from the mass shell. With `pz` dropped, the
-   only trained feature where D differs from A is `E` (Box-Cox versus `log`), so
-   this remains an isolated transform comparison. These are fresh runs, never
+3. **`drop_z_pz`, 2022 only.** Run Pipeline A and Pipeline D. The NF learns
+   `(x,y,E,px,py,t)`; `z` is reconstructed from the train-fitted scoring plane and
+   positive `pz` from the mass shell. With `pz` dropped, the only trained feature
+   where D differs from A is `E` (Box-Cox versus `log`), so this is an isolated
+   transform comparison. 2022 is chosen because it has the largest train split
+   (1.08M rows) and the largest reference ESS (33,915), which gives the best chance
+   of separating the effect from finite-sample noise. These are fresh runs, never
    checkpoint continuations. Pipeline E, the earlier log-E-only pipeline, is
    redundant with D here and produces identical model-space data.
 4. **Full 8D, 2025 only.** Pipeline A smoke diagnostic. This tests whether a
@@ -96,8 +98,8 @@ python3 -u scripts/create_model4_extended_experiment_configs.py \
   --stage smoke
 ```
 
-This creates 13 configs: four Pipeline-D `drop_ze`, eight `drop_z_pz` (A and D
-for four years), and one 2025 Pipeline-A full-8D diagnostic.
+This creates 7 configs: four Pipeline-D `drop_ze`, two 2022 `drop_z_pz` (A and D),
+and one 2025 Pipeline-A full-8D diagnostic.
 
 After the smoke gate passes, create fresh production configs for Pipeline D and
 `drop_z_pz` (the 8D diagnostic is intentionally excluded):
@@ -155,9 +157,9 @@ Create configs only for completed runs in the requested family. Examples:
 python3 scripts/create_model4_validation_configs.py \
   --stage smoke --ablations drop_ze --pipelines D --expected-count 4
 
-# Eight isolated Box-Cox-E versus log-E drop-z-pz runs
+# Two isolated Box-Cox-E versus log-E drop-z-pz runs (2022)
 python3 scripts/create_model4_validation_configs.py \
-  --stage smoke --ablations drop_z_pz --pipelines A D --expected-count 8
+  --stage smoke --ablations drop_z_pz --pipelines A D --expected-count 2
 
 # One 2025 full-8D diagnostic
 python3 scripts/create_model4_validation_configs.py \
