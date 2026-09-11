@@ -43,6 +43,16 @@ def main() -> None:
     )
     parser.add_argument("--generation-seed", type=int, default=1556)
     parser.add_argument(
+        "--dataset-ids",
+        nargs="+",
+        help=(
+            "Restrict to these campaigns. Useful for the envelope diagnostic: "
+            "where the train and all-clean observed envelopes are identical, the "
+            "diagnostic run reproduces the validation run exactly and carries no "
+            "information."
+        ),
+    )
+    parser.add_argument(
         "--purpose",
         choices=("validation", "envelope_diagnostic"),
         default="validation",
@@ -70,6 +80,8 @@ def main() -> None:
         pipeline = training["preprocessing"]["id"]
         ablation = training["model"]["ablation"]
         if args.pipelines and pipeline not in args.pipelines:
+            continue
+        if args.dataset_ids and dataset_id not in args.dataset_ids:
             continue
         identity = (dataset_id, pipeline, ablation)
         if identity in identities:
