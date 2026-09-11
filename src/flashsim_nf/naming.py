@@ -30,8 +30,8 @@ def build_run_id(
     trial_slug = validate_slug(trial_id, field="trial_id")
     hash_slug = validate_slug(config_hash, field="config_hash")
     preprocessing_slug = preprocessing.lower()
-    if preprocessing_slug not in {"a", "b", "c"}:
-        raise ValueError("preprocessing must be A, B, or C")
+    if preprocessing_slug not in {"a", "b", "c", "d", "e"}:
+        raise ValueError("preprocessing must be A, B, C, D, or E")
     if training_seed < 0:
         raise ValueError("training_seed must be non-negative")
     return (

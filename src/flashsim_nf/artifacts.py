@@ -28,8 +28,8 @@ class RunKey:
         validate_slug(self.ablation, field="ablation")
         validate_slug(self.trial_id, field="trial_id")
         validate_slug(self.config_hash, field="config_hash")
-        if self.preprocessing not in {"A", "B", "C"}:
-            raise ValueError("preprocessing must be A, B, or C")
+        if self.preprocessing not in {"A", "B", "C", "D", "E"}:
+            raise ValueError("preprocessing must be A, B, C, D, or E")
         if self.training_seed < 0:
             raise ValueError("training_seed must be non-negative")
 

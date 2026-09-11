@@ -29,9 +29,7 @@ class BaselineConfigRecord:
         return asdict(self)
 
 
-def _dataset_configs(
-    project: Path, dataset_ids: Sequence[str] | None
-) -> list[Path]:
+def _dataset_configs(project: Path, dataset_ids: Sequence[str] | None) -> list[Path]:
     candidates = sorted((project / "configs/datasets").glob("*.yaml"))
     if dataset_ids is None:
         return candidates
@@ -55,6 +53,7 @@ def _validate_existing(
     pipeline: str,
     stage: str,
     training_seed: int,
+    ablation: str,
 ) -> None:
     expected = {
         "dataset_id": (config.get("dataset") or {}).get("dataset_id"),
@@ -62,6 +61,7 @@ def _validate_existing(
         "stage": (config.get("experiment") or {}).get("stage"),
         "trial_id": (config.get("experiment") or {}).get("trial_id"),
         "training_seed": (config.get("training") or {}).get("seed"),
+        "ablation": (config.get("model") or {}).get("ablation"),
     }
     observed = {
         "dataset_id": dataset_id,
@@ -69,6 +69,7 @@ def _validate_existing(
         "stage": stage,
         "trial_id": "base",
         "training_seed": training_seed,
+        "ablation": ablation,
     }
     if expected != observed:
         raise ValueError(
@@ -85,6 +86,8 @@ def create_model4_baseline_configs(
     environment: str,
     stage: str = "smoke",
     pipelines: Sequence[str] = ("A", "B", "C"),
+    ablation: str = "drop_ze",
+    preprocessing_data_root: str | Path | None = None,
     dataset_ids: Sequence[str] | None = None,
     training_seed: int = 42,
     skip_existing: bool = False,
@@ -98,8 +101,14 @@ def create_model4_baseline_configs(
     if environment not in {"local", "cern"}:
         raise ValueError("environment must be local or cern")
     normalized_pipelines = tuple(str(item).upper() for item in pipelines)
-    if not normalized_pipelines or not set(normalized_pipelines) <= {"A", "B", "C"}:
-        raise ValueError("pipelines must contain only A, B, and/or C")
+    if not normalized_pipelines or not set(normalized_pipelines) <= {
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+    }:
+        raise ValueError("pipelines must contain only A, B, C, D, and/or E")
     if len(normalized_pipelines) != len(set(normalized_pipelines)):
         raise ValueError("pipelines must not contain duplicates")
 
@@ -111,8 +120,9 @@ def create_model4_baseline_configs(
         year = int(dataset["year"])
         prepared = Path(dataset["legacy_prepared_paths"][environment])
         for pipeline in normalized_pipelines:
+            ablation_tag = "" if ablation == "drop_ze" else f"_{ablation}"
             config_path = destination / (
-                f"{year}_{pipeline}_base_{stage}_seed{training_seed}.yaml"
+                f"{year}_{pipeline}{ablation_tag}_base_{stage}_seed{training_seed}.yaml"
             )
             if config_path.exists():
                 if not skip_existing:
@@ -126,6 +136,7 @@ def create_model4_baseline_configs(
                     pipeline=pipeline,
                     stage=stage,
                     training_seed=training_seed,
+                    ablation=ablation,
                 )
                 records.append(
                     BaselineConfigRecord(
@@ -144,8 +155,18 @@ def create_model4_baseline_configs(
                 project_root=project,
                 dataset_config=dataset_config,
                 prepared_directory=prepared,
+                preprocessing_directory=(
+                    Path(preprocessing_data_root)
+                    / "campaigns"
+                    / dataset_id
+                    / "prepared_data"
+                    / f"preprocessing_{pipeline}"
+                    if pipeline in {"D", "E"} and preprocessing_data_root is not None
+                    else None
+                ),
                 output_root=output_root,
                 preprocessing=pipeline,
+                ablation=ablation,
                 stage=stage,
                 trial_id="base",
                 training_seed=training_seed,

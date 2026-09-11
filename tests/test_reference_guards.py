@@ -80,8 +80,10 @@ def test_train_and_all_reference_guards_have_separate_roles() -> None:
     assert set(train_guard["empirical_support"]["feature_bounds"]) == set(
         EMPIRICAL_SUPPORT_FEATURES
     )
-    assert train_guard["empirical_support"]["action"] == "diagnostic_only"
+    assert train_guard["empirical_support"]["action"] == "operational_reject"
+    assert train_guard["empirical_support"]["action_source"] == "caller_policy"
     assert all_guard["empirical_support"]["action"] == "operational_reject"
+    assert all_guard["empirical_support"]["action_source"] == "production_only_scope"
     assert (
         train_guard["physical_contract"]["contract_id"]
         == "model4_drop_ze_physics_v1"
@@ -142,7 +144,15 @@ def test_empirical_envelope_uses_raw_minmax_for_each_reference_scope() -> None:
     assert all_x == {"physical_lower": -4.0, "physical_upper": 40.0}
 
 
-def test_train_envelope_monitors_but_production_envelope_rejects() -> None:
+def test_train_envelope_rejects_outside_observed_fluka_support() -> None:
+    """The default train envelope bounds generation to what FLUKA actually produced.
+
+    This is leakage-free: the bounds come from the train split only, so no validation
+    or test information reaches the guard. It is what keeps an unbounded inverse
+    transform, such as the `exp` used for log-space energies, from placing rows far
+    beyond any observed FLUKA event.
+    """
+
     splits = {
         "train": _data("train", np.linspace(0.0, 9.0, 20)),
         "validation": _data("validation", np.linspace(0.0, 30.0, 20)),
@@ -152,10 +162,42 @@ def test_train_envelope_monitors_but_production_envelope_rejects() -> None:
     proposal = _data("proposal", np.array([5.0, 25.0, 100.0]))
     train_result = evaluate_guard(proposal, train_guard)
     production_result = evaluate_guard(proposal, all_guard)
-    assert train_result["rejected_rows"] == 0
-    assert train_result["reasons"]["diagnostic_empirical_x_outside"]["rows"] == 2
+    assert train_result["rejected_rows"] == 2
+    assert train_result["reasons"]["production_empirical_x_outside"]["rows"] == 2
     assert production_result["rejected_rows"] == 1
     assert production_result["reasons"]["production_empirical_x_outside"]["rows"] == 1
+
+
+def test_train_envelope_can_be_declared_diagnostic_only() -> None:
+    """The monitoring-only policy stays available and is recorded in the artifact."""
+
+    splits = {"train": _data("train", np.linspace(0.0, 9.0, 20))}
+    guard = fit_reference_guard(
+        splits,
+        dataset_id="d",
+        dataset_fingerprint="f",
+        split_id="s",
+        fit_scope="train",
+        empirical_support_action="diagnostic_only",
+    )
+    assert guard["empirical_support"]["action"] == "diagnostic_only"
+    proposal = _data("proposal", np.array([5.0, 25.0, 100.0]))
+    result = evaluate_guard(proposal, guard)
+    assert result["rejected_rows"] == 0
+    assert result["reasons"]["diagnostic_empirical_x_outside"]["rows"] == 2
+
+
+def test_empirical_support_action_is_validated() -> None:
+    splits = {"train": _data("train", np.linspace(0.0, 9.0, 20))}
+    with pytest.raises(ValueError, match="empirical_support_action"):
+        fit_reference_guard(
+            splits,
+            dataset_id="d",
+            dataset_fingerprint="f",
+            split_id="s",
+            fit_scope="train",
+            empirical_support_action="monitor",
+        )
 
 
 def test_all_reference_guard_requires_all_clean_splits() -> None:

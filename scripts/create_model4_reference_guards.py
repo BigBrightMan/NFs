@@ -32,7 +32,7 @@ def _complete_output(path: Path, dataset_id: str) -> bool:
         and train.get("selection_allowed") is True
         and train.get("empirical_support", {}).get("contract_id")
         == "per_dataset_observed_envelope_v2"
-        and train.get("empirical_support", {}).get("action") == "diagnostic_only"
+        and train.get("empirical_support", {}).get("action") == "operational_reject"
         and all_clean.get("dataset_id") == dataset_id
         and all_clean.get("format_version") == 3
         and all_clean.get("fit_scope") == "all_clean_splits"

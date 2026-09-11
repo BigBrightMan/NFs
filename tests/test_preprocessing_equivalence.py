@@ -70,3 +70,90 @@ def test_composed_preprocessor_serialization_round_trip(tmp_path) -> None:
     original.save(path)
     restored = type(original).load(path)
     np.testing.assert_allclose(restored.transform(values), original.transform(values))
+
+
+def test_pipeline_d_changes_only_the_energy_pair_relative_to_pipeline_a() -> None:
+    values = _sample()
+    pipeline_a = build_preprocessor("A", FEATURES).fit(values)
+    pipeline_d = build_preprocessor("D", FEATURES).fit(values)
+    transformed_a = pipeline_a.transform(values)
+    transformed_d = pipeline_d.transform(values)
+    for feature in set(FEATURES) - {"E", "pz"}:
+        index = FEATURES.index(feature)
+        np.testing.assert_allclose(transformed_d[:, index], transformed_a[:, index])
+    for feature in ("E", "pz"):
+        index = FEATURES.index(feature)
+        assert not np.allclose(transformed_d[:, index], transformed_a[:, index])
+
+
+@pytest.mark.parametrize(
+    ("ablation", "dropped", "trained_energy_feature"),
+    [("drop_ze", {"z", "E"}, "pz"), ("drop_z_pz", {"z", "pz"}, "E")],
+)
+def test_pipeline_d_is_a_single_variable_change_within_each_ablation(
+    ablation: str, dropped: set[str], trained_energy_feature: str
+) -> None:
+    """D must differ from A in exactly one *trained* feature per ablation.
+
+    Model 4 never trains on `E` and `pz` together, so changing both in D still
+    yields an isolated comparison against A inside `drop_ze` and `drop_z_pz`.
+    """
+
+    trained = [name for name in FEATURES if name not in dropped]
+    columns = [FEATURES.index(name) for name in trained]
+    values = _sample()
+    transformed_a = build_preprocessor("A", FEATURES).fit(values).transform(values)
+    transformed_d = build_preprocessor("D", FEATURES).fit(values).transform(values)
+    differing = [
+        name
+        for name, index in zip(trained, columns)
+        if not np.allclose(transformed_d[:, index], transformed_a[:, index])
+    ]
+    assert differing == [trained_energy_feature], (
+        f"{ablation}: expected only {trained_energy_feature} to differ, got {differing}"
+    )
+
+
+def test_pipeline_d_matches_pipeline_e_on_the_drop_z_pz_feature_set() -> None:
+    """D subsumes E: with `pz` dropped, the two produce identical model space."""
+
+    trained = [name for name in FEATURES if name not in {"z", "pz"}]
+    values = _sample()
+    transformed_d = build_preprocessor("D", FEATURES).fit(values).transform(values)
+    transformed_e = build_preprocessor("E", FEATURES).fit(values).transform(values)
+    for name in trained:
+        index = FEATURES.index(name)
+        np.testing.assert_allclose(transformed_d[:, index], transformed_e[:, index])
+
+
+def test_pipeline_d_inverse_survives_model_space_far_below_the_energy_edge() -> None:
+    """Regression guard for the Box-Cox inverse domain limit that D removes.
+
+    Pipeline A's `inv_boxcox` is undefined below `-1/lambda`, which sits only
+    0.075-0.203 sigma beneath the physical 10 GeV edge across the four campaigns,
+    so a sampler that strays there yields NaN. D's inverse is `exp`, defined on all
+    of R and strictly positive. `inverse_transform` raises on non-finite output, so
+    an exception here is itself the regression signal.
+    """
+
+    sigmas = np.array([-10.0, -8.0, -6.0, -4.0, -2.0, 0.0, 4.0])
+    probe = np.repeat(sigmas[:, None], len(FEATURES), axis=1)
+    recovered = build_preprocessor("D", FEATURES).fit(_sample()).inverse_transform(probe)
+    for feature in ("E", "pz"):
+        column = recovered[:, FEATURES.index(feature)]
+        assert np.all(column > 0.0), f"{feature} inverse produced non-positive values"
+
+
+def test_pipeline_e_changes_only_energy_relative_to_pipeline_a() -> None:
+    values = _sample()
+    pipeline_a = build_preprocessor("A", FEATURES).fit(values)
+    pipeline_e = build_preprocessor("E", FEATURES).fit(values)
+    transformed_a = pipeline_a.transform(values)
+    transformed_e = pipeline_e.transform(values)
+    for feature in set(FEATURES) - {"E"}:
+        index = FEATURES.index(feature)
+        np.testing.assert_allclose(transformed_e[:, index], transformed_a[:, index])
+    assert not np.allclose(
+        transformed_e[:, FEATURES.index("E")],
+        transformed_a[:, FEATURES.index("E")],
+    )

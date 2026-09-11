@@ -17,11 +17,84 @@ from ..data import write_root_arrays
 from ..guards import PHYSICAL_FEATURES, ReferenceData, guard_rejection_masks
 from ..manifest import write_json_atomic
 from ..models.flows import FlowConfig, build_flow
-from ..preprocessing import load_legacy_preprocessor
-from ..reconstruction import ScoringPlane, fit_scoring_plane, reconstruct_drop_z_e
+from ..preprocessing import load_preprocessor
+from ..reconstruction import (
+    ScoringPlane,
+    fit_scoring_plane,
+    reconstruct_drop_z_e,
+    reconstruct_drop_z_pz,
+    reconstruct_full_8d,
+)
 
 FORMAT = "flashsim_nf.model4_generation_config"
 VERSION = 1
+
+# `E` is reconstructed as sqrt(px^2 + py^2 + pz^2 + m^2), so the residual
+# E^2 - px^2 - py^2 - pz^2 - m^2 is zero in exact arithmetic and is pure float64
+# rounding in practice. That rounding scales with E^2 (about 2.5 * eps * E^2), so an
+# absolute threshold silently becomes a hard ceiling on generated energy: 1.0e-6 GeV^2
+# is exceeded above roughly 42 TeV by rounding alone, with no physics violation.
+# Compare the residual against its own magnitude scale instead. The relative bound is
+# about four thousand times the float64 noise floor, so it still catches any genuine
+# mass-shell violation, which is O(1) relative.
+MASS_SHELL_RELATIVE_TOLERANCE = 1.0e-12
+SCORING_PLANE_RELATIVE_TOLERANCE = 1.0e-12
+SCORING_PLANE_ABSOLUTE_FLOOR = 1.0e-8
+
+
+def _empirical_envelope_excursion(
+    features: dict[str, np.ndarray], guard: dict[str, Any]
+) -> dict[str, Any]:
+    """Report how far accepted rows travelled beyond the observed FLUKA envelope.
+
+    When the guard is train-fitted the observed min/max is `diagnostic_only`, so
+    nothing bounds the generated support from above. That is the intended policy —
+    a finite-sample envelope is not a physical limit — but it means an unbounded
+    inverse transform can place rows far outside anything FLUKA produced. Record the
+    excursion so the manifest carries the evidence instead of leaving it implicit.
+    """
+
+    support = guard.get("empirical_support") or {}
+    bounds = support.get("feature_bounds") or {}
+    report: dict[str, Any] = {
+        "action": support.get("action"),
+        "contract_id": support.get("contract_id"),
+        "features": {},
+    }
+    worst_name: str | None = None
+    worst_ratio = 0.0
+    for name, bound in bounds.items():
+        values = features.get(name)
+        if values is None:
+            continue
+        lower = float(bound["physical_lower"])
+        upper = float(bound["physical_upper"])
+        width = upper - lower
+        observed_low = float(np.min(values))
+        observed_high = float(np.max(values))
+        above = max(0.0, observed_high - upper)
+        below = max(0.0, lower - observed_low)
+        entry = {
+            "envelope_lower": lower,
+            "envelope_upper": upper,
+            "generated_minimum": observed_low,
+            "generated_maximum": observed_high,
+            "rows_above_envelope": int(np.count_nonzero(values > upper)),
+            "rows_below_envelope": int(np.count_nonzero(values < lower)),
+        }
+        if width > 0.0:
+            entry["excursion_above_in_envelope_widths"] = above / width
+            entry["excursion_below_in_envelope_widths"] = below / width
+            ratio = max(above, below) / width
+            if ratio > worst_ratio:
+                worst_ratio = ratio
+                worst_name = name
+        if upper > 0.0:
+            entry["generated_maximum_over_envelope_upper"] = observed_high / upper
+        report["features"][name] = entry
+    report["worst_feature"] = worst_name
+    report["worst_excursion_in_envelope_widths"] = worst_ratio
+    return report
 
 
 def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
@@ -35,7 +108,7 @@ def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
             "selection_allowed": True,
         }
         role = "train-reference"
-    elif purpose == "muondis":
+    elif purpose in {"muondis", "envelope_diagnostic"}:
         expected = {
             "fit_scope": "all_clean_splits",
             "source_splits": ["train", "validation", "test"],
@@ -56,9 +129,7 @@ def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
         )
     physical_contract = guard.get("physical_contract")
     if not isinstance(physical_contract, dict):
-        raise ValueError(
-            f"{purpose} guard has no explicit physical contract"
-        )
+        raise ValueError(f"{purpose} guard has no explicit physical contract")
     if physical_contract.get("contract_id") != "model4_drop_ze_physics_v1":
         raise ValueError("Unsupported guard physical contract")
     empirical_support = guard.get("empirical_support")
@@ -66,21 +137,22 @@ def _validate_guard_role(guard: dict[str, Any], *, purpose: str) -> None:
         raise ValueError("Guard has no empirical observed-envelope contract")
     if empirical_support.get("rule") != "raw_observed_minmax":
         raise ValueError("Guard empirical envelope must use raw observed min/max")
-    if (
-        empirical_support.get("contract_id")
-        != "per_dataset_observed_envelope_v2"
-    ):
+    if empirical_support.get("contract_id") != "per_dataset_observed_envelope_v2":
         raise ValueError("Unsupported empirical observed-envelope contract")
     if empirical_support.get("fit_scope") != guard.get("fit_scope"):
         raise ValueError("Empirical-envelope scope does not match its reference role")
-    expected_action = (
-        "diagnostic_only" if purpose in {"validation", "test"}
-        else "operational_reject"
-    )
-    if empirical_support.get("action") != expected_action:
+    action = empirical_support.get("action")
+    if action not in {"operational_reject", "diagnostic_only"}:
         raise ValueError(
-            f"{purpose} requires empirical-envelope action={expected_action}"
+            f"Unsupported empirical-envelope action {action!r}; expected "
+            "'operational_reject' or 'diagnostic_only'"
         )
+    if purpose in {"muondis", "envelope_diagnostic"} and action != "operational_reject":
+        raise ValueError(f"{purpose} requires empirical-envelope action=operational_reject")
+    # For validation and test the envelope action is a recorded policy choice, not a
+    # leakage control: `fit_scope == "train"` above is what keeps validation and test
+    # information out of the guard. Both actions are therefore permitted here, and the
+    # generation manifest records which one was in force.
     bounds = empirical_support.get("feature_bounds")
     required_features = {"x", "y", "z", "px", "py", "pz", "E", "t"}
     if not isinstance(bounds, dict) or set(bounds) != required_features:
@@ -156,8 +228,10 @@ def resolve_generation_config(
     """Resolve checkpoint, inverse transform, physics, guard, and output paths."""
 
     run = Path(run_directory).resolve()
-    if purpose not in {"validation", "test", "muondis"}:
-        raise ValueError("purpose must be validation, test, or muondis")
+    if purpose not in {"validation", "test", "muondis", "envelope_diagnostic"}:
+        raise ValueError(
+            "purpose must be validation, test, muondis, or envelope_diagnostic"
+        )
     if purpose in {"test", "muondis"} and frozen_selection is None:
         raise ValueError(
             "Final test and MuonDIS generation require a frozen-selection artifact"
@@ -171,23 +245,34 @@ def resolve_generation_config(
     training = _read_json(resolved_path)
     dataset = training["dataset"]
     preprocessing = training["preprocessing"]
-    if training["model"].get("ablation") != "drop_ze":
-        raise ValueError("Generation currently supports Model 4 drop_ze only")
+    ablation = str(training["model"].get("ablation"))
+    if ablation not in {"drop_ze", "drop_z_pz", "none"}:
+        raise ValueError(f"Unsupported Model 4 ablation: {ablation}")
     if training["model"].get("objective") != "weighted_nll":
         raise ValueError("Checkpoint is not a Model 4 weighted-density run")
     if training["model"].get("weight_is_input_feature") is not False:
         raise ValueError("Model 4 generation forbids w as an NF feature")
     prepared = Path(training["resolution"]["prepared_directory"]).resolve()
     split_counts = dataset["split_counts"]
-    default_rows = split_counts.get(purpose)
+    default_rows = split_counts.get(
+        "validation" if purpose == "envelope_diagnostic" else purpose
+    )
     rows = int(number_events if number_events is not None else default_rows or 0)
     if rows <= 0:
         raise ValueError("number_events must be supplied and positive")
-    seed_defaults = {"validation": 1556, "test": 2556, "muondis": 3556}
+    # `envelope_diagnostic` deliberately reuses the validation seed so the flow
+    # proposal stream is identical to the matching validation run and the only
+    # difference between the two samples is which observed envelope rejected.
+    seed_defaults = {
+        "validation": 1556,
+        "test": 2556,
+        "muondis": 3556,
+        "envelope_diagnostic": 1556,
+    }
     seed = int(
         generation_seed if generation_seed is not None else seed_defaults[purpose]
     )
-    if purpose == "validation":
+    if purpose in {"validation", "envelope_diagnostic"}:
         reference_splits = ["validation"]
     elif purpose == "test":
         reference_splits = ["test"]
@@ -243,11 +328,15 @@ def resolve_generation_config(
             "id": preprocessing["id"],
             "metadata": preprocessing["metadata"],
             "metadata_sha256": preprocessing["metadata_sha256"],
+            "artifact": preprocessing.get("artifact", preprocessing["metadata"]),
+            "artifact_sha256": preprocessing.get(
+                "artifact_sha256", preprocessing["metadata_sha256"]
+            ),
             "feature_order": training["data"]["feature_order"],
         },
         "model": training["model"],
         "reconstruction": {
-            "type": "drop_z_e",
+            "type": ablation,
             "muon_mass_gev": 0.1056583755,
             "scoring_plane": plane.to_dict(),
         },
@@ -264,6 +353,11 @@ def resolve_generation_config(
         },
         "generation": {
             "purpose": purpose,
+            # An envelope_diagnostic sample is generated under the all-clean guard,
+            # whose bounds contain validation and test information. It exists only to
+            # measure how much the envelope choice matters and must never reach model
+            # selection or a test claim.
+            "selection_allowed": purpose == "validation",
             "number_events": rows,
             "seed": seed,
             "batch_size": int(batch_size),
@@ -288,7 +382,12 @@ def _validate_config(config: dict[str, Any]) -> None:
     artifacts = (
         ("checkpoint", config["checkpoint"]["path"], config["checkpoint"]["sha256"]),
         (
-            "preprocessing",
+            "preprocessing artifact",
+            config["preprocessing"]["artifact"],
+            config["preprocessing"]["artifact_sha256"],
+        ),
+        (
+            "preprocessing metadata",
             config["preprocessing"]["metadata"],
             config["preprocessing"]["metadata_sha256"],
         ),
@@ -357,7 +456,7 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
     )
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device).eval()
-    preprocessor = load_legacy_preprocessor(
+    preprocessor = load_preprocessor(
         config["preprocessing"]["metadata"],
         feature_order=feature_order,
         expected_pipeline=config["preprocessing"]["id"],
@@ -376,12 +475,27 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
             proposal_rows = min(batch_size, maximum_attempts - attempted)
             model_space = model.sample(proposal_rows).detach().cpu().numpy()
             physical_selected = preprocessor.inverse_transform(model_space)
-            physical = reconstruct_drop_z_e(
-                physical_selected,
-                feature_order=feature_order,
-                scoring_plane=plane,
-                muon_mass_gev=float(config["reconstruction"]["muon_mass_gev"]),
-            )
+            reconstruction = config["reconstruction"]["type"]
+            if reconstruction == "drop_ze":
+                physical = reconstruct_drop_z_e(
+                    physical_selected,
+                    feature_order=feature_order,
+                    scoring_plane=plane,
+                    muon_mass_gev=float(config["reconstruction"]["muon_mass_gev"]),
+                )
+            elif reconstruction == "drop_z_pz":
+                physical = reconstruct_drop_z_pz(
+                    physical_selected,
+                    feature_order=feature_order,
+                    scoring_plane=plane,
+                    muon_mass_gev=float(config["reconstruction"]["muon_mass_gev"]),
+                )
+            elif reconstruction == "none":
+                physical = reconstruct_full_8d(
+                    physical_selected, feature_order=feature_order
+                )
+            else:  # pragma: no cover - validated when resolving the config
+                raise ValueError(f"Unknown reconstruction: {reconstruction}")
             matrix = np.column_stack([physical[name] for name in PHYSICAL_FEATURES])
             finite = np.isfinite(matrix).all(axis=1)
             domain = finite & (physical["E"] > 10.0) & (physical["pz"] > 0.0)
@@ -452,19 +566,53 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
         - plane.x * features["x"]
         - plane.y * features["y"]
     )
+    mass_shell_scale = np.maximum(np.square(features["E"]), 1.0)
+    mass_shell_relative = np.abs(mass_shell) / mass_shell_scale
+    plane_scale = np.maximum(np.abs(features["z"]), 1.0)
+    plane_relative = np.abs(plane_residual) / plane_scale
+    worst_mass_shell = int(np.argmax(mass_shell_relative))
+    worst_plane = int(np.argmax(plane_relative))
     contract = {
         "finite": True,
         "E_gt_10": True,
         "pz_gt_0": True,
         "maximum_absolute_mass_shell_residual_gev2": float(np.max(np.abs(mass_shell))),
+        "maximum_relative_mass_shell_residual": float(
+            mass_shell_relative[worst_mass_shell]
+        ),
+        "mass_shell_relative_tolerance": MASS_SHELL_RELATIVE_TOLERANCE,
+        "energy_at_worst_mass_shell_residual_gev": float(
+            features["E"][worst_mass_shell]
+        ),
         "maximum_absolute_scoring_plane_residual": float(
             np.max(np.abs(plane_residual))
         ),
+        "maximum_relative_scoring_plane_residual": float(plane_relative[worst_plane]),
+        "scoring_plane_relative_tolerance": SCORING_PLANE_RELATIVE_TOLERANCE,
+        "maximum_generated_energy_gev": float(np.max(features["E"])),
+        "maximum_generated_pz_gev": float(np.max(features["pz"])),
     }
-    if contract["maximum_absolute_mass_shell_residual_gev2"] > 1.0e-6:
-        raise ValueError("Generated output violates the mass-shell contract")
-    if contract["maximum_absolute_scoring_plane_residual"] > 1.0e-8:
-        raise ValueError("Generated output violates the scoring-plane contract")
+    if contract["maximum_relative_mass_shell_residual"] > MASS_SHELL_RELATIVE_TOLERANCE:
+        raise ValueError(
+            "Generated output violates the mass-shell contract: relative residual "
+            f"{contract['maximum_relative_mass_shell_residual']:.3e} exceeds "
+            f"{MASS_SHELL_RELATIVE_TOLERANCE:.3e} "
+            f"(absolute {contract['maximum_absolute_mass_shell_residual_gev2']:.3e} GeV^2 "
+            f"at E = {contract['energy_at_worst_mass_shell_residual_gev']:.6g} GeV)"
+        )
+    plane_absolute = contract["maximum_absolute_scoring_plane_residual"]
+    if (
+        contract["maximum_relative_scoring_plane_residual"]
+        > SCORING_PLANE_RELATIVE_TOLERANCE
+        and plane_absolute > SCORING_PLANE_ABSOLUTE_FLOOR
+    ):
+        raise ValueError(
+            "Generated output violates the scoring-plane contract: relative residual "
+            f"{contract['maximum_relative_scoring_plane_residual']:.3e} exceeds "
+            f"{SCORING_PLANE_RELATIVE_TOLERANCE:.3e} "
+            f"(absolute {plane_absolute:.3e})"
+        )
+    envelope_excursion = _empirical_envelope_excursion(features, guard)
     metadata = {
         "run": np.ones(requested, dtype=np.int32),
         "event": np.arange(requested, dtype=np.int64),
@@ -476,9 +624,15 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
     if output.exists():
         raise FileExistsError(output)
     year = config["dataset"]["year"]
+    ablation = str(config["model"]["ablation"])
+    display_ablation = {
+        "drop_ze": "drop_z_E",
+        "drop_z_pz": "drop_z_pz",
+        "none": "full_8d",
+    }[ablation]
     prefix = (
         f"FS_generate_{year}_model4_"
-        f"preprocess_{config['preprocessing']['id']}_drop_z_E_"
+        f"preprocess_{config['preprocessing']['id']}_{display_ablation}_"
         f"genseed{seed}_guard_reject_v2"
     )
     reference = _weight_summary(
@@ -494,13 +648,15 @@ def generate_model4_from_config(config_path: str | Path) -> dict[str, Any]:
         "dataset": config["dataset"],
         "model": "Model 4 weighted-density NF",
         "preprocessing": config["preprocessing"]["id"],
-        "ablation": "drop_z_E",
+        "ablation": display_ablation,
         "training_run": config["training_run"],
         "checkpoint": config["checkpoint"],
         "generation": config["generation"],
         "guard": config["guard"],
         "reconstruction": config["reconstruction"],
         "physical_contract": contract,
+        "empirical_envelope_excursion": envelope_excursion,
+        "selection_allowed": bool(config["generation"].get("selection_allowed", False)),
         "rejection": {
             "attempted_rows": attempted,
             "accepted_rows": requested,

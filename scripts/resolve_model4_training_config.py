@@ -18,9 +18,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset-config", required=True)
     parser.add_argument("--prepared-directory", required=True)
+    parser.add_argument("--preprocessing-directory")
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--config-output", required=True)
-    parser.add_argument("--preprocessing", choices=("A", "B", "C"), required=True)
+    parser.add_argument(
+        "--preprocessing", choices=("A", "B", "C", "D", "E"), required=True
+    )
+    parser.add_argument(
+        "--ablation", choices=("drop_ze", "drop_z_pz", "none"), default="drop_ze"
+    )
     parser.add_argument("--stage", choices=("smoke", "production"), required=True)
     parser.add_argument("--trial-id", default="base")
     parser.add_argument("--training-seed", type=int, default=42)
@@ -37,8 +43,10 @@ def main() -> None:
         project_root=project,
         dataset_config=args.dataset_config,
         prepared_directory=args.prepared_directory,
+        preprocessing_directory=args.preprocessing_directory,
         output_root=args.output_root,
         preprocessing=args.preprocessing,
+        ablation=args.ablation,
         stage=args.stage,
         trial_id=args.trial_id,
         training_seed=args.training_seed,

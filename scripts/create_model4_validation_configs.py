@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve generated-validation configs for completed baseline runs."""
+"""Resolve generated-validation configs for completed baseline runs.
+
+With `--purpose envelope_diagnostic` the same runs are resolved against
+`guard_all_ref.json` instead, producing a diagnostic sample bounded by the
+observed envelope of all clean FLUKA splits. That sample measures how much the
+envelope choice is worth; it carries validation and test information in its
+rejection boundary and is refused by winner selection.
+"""
 
 from __future__ import annotations
 
@@ -20,25 +27,39 @@ def main() -> None:
     parser.add_argument(
         "--guard-root", default="/eos/user/t/tanansub/SWAN_projects/NFs_data/guards"
     )
-    parser.add_argument(
-        "--guard-version-directory", default="train_vs_all_clean_v4"
-    )
+    parser.add_argument("--guard-version-directory", default="train_vs_all_clean_v4")
     parser.add_argument("--expected-count", type=int, default=12)
+    parser.add_argument(
+        "--stage", choices=("smoke", "production"), default="production"
+    )
+    parser.add_argument(
+        "--ablations",
+        nargs="+",
+        choices=("drop_ze", "drop_z_pz", "none"),
+        default=["drop_ze"],
+    )
+    parser.add_argument(
+        "--pipelines", nargs="+", choices=("A", "B", "C", "D", "E")
+    )
     parser.add_argument("--generation-seed", type=int, default=1556)
+    parser.add_argument(
+        "--purpose",
+        choices=("validation", "envelope_diagnostic"),
+        default="validation",
+    )
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     output_root = Path(args.output_root).resolve()
-    successes = sorted(
-        output_root.glob(
-            "campaigns/*/model4/preprocessing_*/drop_ze/production/base/"
-            "config_*/train_seed_42/_SUCCESS.json"
+    successes = []
+    for ablation in args.ablations:
+        successes.extend(
+            output_root.glob(
+                f"campaigns/*/model4/preprocessing_*/{ablation}/{args.stage}/base/"
+                "config_*/train_seed_42/_SUCCESS.json"
+            )
         )
-    )
-    if len(successes) != args.expected_count:
-        raise RuntimeError(
-            f"Expected {args.expected_count} completed baseline runs, "
-            f"found {len(successes)}"
-        )
+    successes = sorted(set(successes))
     records = []
     identities = set()
     candidates = []
@@ -47,19 +68,39 @@ def main() -> None:
         training = json.loads((run / "config_resolved.json").read_text())
         dataset_id = training["dataset"]["dataset_id"]
         pipeline = training["preprocessing"]["id"]
-        identity = (dataset_id, pipeline)
+        ablation = training["model"]["ablation"]
+        if args.pipelines and pipeline not in args.pipelines:
+            continue
+        identity = (dataset_id, pipeline, ablation)
         if identity in identities:
             raise RuntimeError(f"Duplicate completed baseline: {identity}")
         identities.add(identity)
+        guard_name = (
+            "guard_train_ref.json"
+            if args.purpose == "validation"
+            else "guard_all_ref.json"
+        )
         guard = (
             Path(args.guard_root)
             / dataset_id
             / args.guard_version_directory
-            / "guard_train_ref.json"
+            / guard_name
         )
-        candidates.append((run, dataset_id, pipeline, guard))
+        candidates.append((run, dataset_id, pipeline, ablation, guard))
+    if args.dry_run:
+        print(
+            json.dumps(
+                {
+                    "purpose": args.purpose,
+                    "would_read": [str(guard) for *_, guard in candidates],
+                    "runs": [str(run) for run, *_ in candidates],
+                },
+                indent=2,
+            )
+        )
+        return
     missing_guards = [
-        str(guard) for _, _, _, guard in candidates if not guard.is_file()
+        str(guard) for _, _, _, _, guard in candidates if not guard.is_file()
     ]
     if missing_guards:
         formatted = "\n".join(f"- {path}" for path in missing_guards)
@@ -67,18 +108,30 @@ def main() -> None:
             "Generated-validation guard preflight failed. Missing train-reference "
             f"artifacts:\n{formatted}"
         )
-    for run, dataset_id, pipeline, guard in candidates:
+    if len(candidates) != args.expected_count:
+        raise RuntimeError(
+            f"Expected {args.expected_count} runs after filters, "
+            f"found {len(candidates)}"
+        )
+    for run, dataset_id, pipeline, ablation, guard in candidates:
         config = resolve_generation_config(
             run_directory=run,
-            purpose="validation",
+            purpose=args.purpose,
             guard_artifact=guard,
             generation_seed=args.generation_seed,
         )
-        destination = (
-            output_root
-            / "resolved_configs/model4_generated_validation_guard_v4"
-            / dataset_id
-            / f"preprocess_{pipeline}_genseed{args.generation_seed}.yaml"
+        destination_root = output_root / (
+            "resolved_configs/model4_generated_validation_guard_v4"
+            if args.purpose == "validation"
+            else "resolved_configs/model4_envelope_diagnostic_all_guard"
+        )
+        destination = destination_root / dataset_id
+        if args.stage != "production":
+            destination = destination / args.stage
+        if ablation != "drop_ze":
+            destination = destination / ablation
+        destination = destination / (
+            f"preprocess_{pipeline}_genseed{args.generation_seed}.yaml"
         )
         serialized = yaml.safe_dump(config, sort_keys=False)
         if destination.exists():
@@ -95,6 +148,7 @@ def main() -> None:
             {
                 "dataset_id": dataset_id,
                 "preprocessing": pipeline,
+                "ablation": ablation,
                 "run_directory": str(run),
                 "config": str(destination),
                 "status": status,

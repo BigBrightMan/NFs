@@ -131,3 +131,37 @@ def load_legacy_preprocessor(
         chains={feature: _chain(feature, parameters[feature]) for feature in selected},
         fitted=True,
     )
+
+
+def load_preprocessor(
+    path: str | Path,
+    *,
+    feature_order: list[str] | tuple[str, ...],
+    expected_pipeline: str | None = None,
+) -> FeaturePreprocessor:
+    """Load either a native composed artifact or frozen legacy metadata."""
+
+    source = Path(path)
+    state = json.loads(source.read_text())
+    if state.get("format") == "flashsim_nf.composed_preprocessor":
+        complete = FeaturePreprocessor.from_dict(state)
+        if expected_pipeline and complete.name != str(expected_pipeline).upper():
+            raise ValueError("Preprocessing pipeline mismatch")
+        selected = _validate_features(feature_order)
+        if [name for name in complete.feature_order if name in selected] != list(
+            selected
+        ):
+            raise ValueError(
+                "Requested features are not an ordered preprocessing subset"
+            )
+        return FeaturePreprocessor(
+            name=complete.name,
+            feature_order=selected,
+            chains={name: complete.chains[name] for name in selected},
+            fitted=True,
+        )
+    return load_legacy_preprocessor(
+        source,
+        feature_order=feature_order,
+        expected_pipeline=expected_pipeline,
+    )

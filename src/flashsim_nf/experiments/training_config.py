@@ -14,7 +14,11 @@ import yaml
 from ..config import config_hash, deep_merge, load_yaml
 from ..naming import build_run_id, validate_slug
 
-ABLATION_DROPS = {"drop_ze": {"z", "E"}}
+ABLATION_DROPS = {
+    "drop_ze": {"z", "E"},
+    "drop_z_pz": {"z", "pz"},
+    "none": set(),
+}
 CANONICAL_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
 
 
@@ -102,8 +106,10 @@ def resolve_model4_training_config(
     project_root: str | Path,
     dataset_config: str | Path,
     prepared_directory: str | Path,
+    preprocessing_directory: str | Path | None = None,
     output_root: str | Path,
     preprocessing: str,
+    ablation: str = "drop_ze",
     stage: str,
     trial_id: str = "base",
     training_seed: int = 42,
@@ -120,8 +126,8 @@ def resolve_model4_training_config(
     prepared = _absolute_directory(prepared_directory, name="prepared_directory")
     outputs = _absolute_directory(output_root, name="output_root")
     pipeline = preprocessing.upper()
-    if pipeline not in {"A", "B", "C"}:
-        raise ValueError("preprocessing must be A, B, or C")
+    if pipeline not in {"A", "B", "C", "D", "E"}:
+        raise ValueError("preprocessing must be A, B, C, D, or E")
     if stage not in {"smoke", "production"}:
         raise ValueError("stage must be smoke or production")
     if training_seed < 0:
@@ -149,16 +155,16 @@ def resolve_model4_training_config(
         raise ValueError("2022 Model 4 training requires the t-clean dataset identity")
     split = dataset["split"]
     counts = {
-        name: int(split["counts"][name])
-        for name in ("train", "validation", "test")
+        name: int(split["counts"][name]) for name in ("train", "validation", "test")
     }
     if sum(counts.values()) != int(dataset["selected_rows"]):
         raise ValueError("Dataset selected_rows does not equal frozen split counts")
 
+    requested_ablation = ablation
     model = {
         "family": "model4",
         "architecture": "rq_spline",
-        "ablation": "drop_ze",
+        "ablation": ablation,
         "objective": "weighted_nll",
         "weight_is_input_feature": False,
         "num_transforms": 8,
@@ -174,14 +180,28 @@ def resolve_model4_training_config(
         "tail_bound": 8.0,
         **selected["model"],
     }
+    model["ablation"] = requested_ablation
     ablation = str(model["ablation"])
     if ablation not in ABLATION_DROPS:
         raise ValueError(f"Unsupported Model 4 ablation: {ablation}")
 
-    preprocessing_directory = prepared / f"preprocessing_{pipeline}"
-    artifact = preprocessing_directory / "preprocessor.joblib"
-    metadata = preprocessing_directory / "preprocessing_parameters.json"
-    feature_order_path = preprocessing_directory / "8d" / "feature_order.json"
+    preprocessing_root = (
+        _absolute_directory(preprocessing_directory, name="preprocessing_directory")
+        if preprocessing_directory is not None
+        else prepared / f"preprocessing_{pipeline}"
+    )
+    composed_artifact = preprocessing_root / "preprocessor.json"
+    artifact = (
+        composed_artifact
+        if composed_artifact.is_file()
+        else preprocessing_root / "preprocessor.joblib"
+    )
+    metadata = (
+        composed_artifact
+        if composed_artifact.is_file()
+        else preprocessing_root / "preprocessing_parameters.json"
+    )
+    feature_order_path = preprocessing_root / "8d" / "feature_order.json"
     split_manifest = prepared / "split" / "split_manifest.json"
     source_feature_order = json.loads(feature_order_path.read_text())
     if tuple(source_feature_order) != CANONICAL_8D:
@@ -247,7 +267,7 @@ def resolve_model4_training_config(
             "split_manifest_sha256": sha256_file(split_manifest),
             "train": {
                 "model_space_path": str(
-                    (preprocessing_directory / "8d/train_preprocessed.root").resolve()
+                    (preprocessing_root / "8d/train_preprocessed.root").resolve()
                 ),
                 "raw_weight_path": str(
                     (prepared / "split/train_rawfeature.root").resolve()
@@ -256,10 +276,7 @@ def resolve_model4_training_config(
             },
             "validation": {
                 "model_space_path": str(
-                    (
-                        preprocessing_directory
-                        / "8d/validation_preprocessed.root"
-                    ).resolve()
+                    (preprocessing_root / "8d/validation_preprocessed.root").resolve()
                 ),
                 "raw_weight_path": str(
                     (prepared / "split/validation_rawfeature.root").resolve()
@@ -309,6 +326,7 @@ def resolve_model4_training_config(
         "run_id": run_id,
         "config_hash": identity,
         "prepared_directory": str(prepared),
+        "preprocessing_directory": str(preprocessing_root.resolve()),
         "output_root": str(outputs),
         "sources": {
             "dataset": _source(dataset_path),
@@ -320,9 +338,7 @@ def resolve_model4_training_config(
     return resolved
 
 
-def write_resolved_training_config(
-    path: str | Path, config: Mapping[str, Any]
-) -> Path:
+def write_resolved_training_config(path: str | Path, config: Mapping[str, Any]) -> Path:
     """Atomically write one new resolved YAML and refuse every overwrite."""
 
     destination = Path(path)

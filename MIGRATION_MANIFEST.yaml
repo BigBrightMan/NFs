@@ -40,6 +40,7 @@ components:
     design: weighted_physical_global_marginal_and_train_defined_tail_metrics
     verification:
       - tests/test_generated_evaluation.py
+      - tests/test_noise_floor.py
 
   model4_training_diagnostics:
     source: clean_nfs_design
@@ -87,6 +88,40 @@ components:
     verification:
       - tests/test_preprocessing_equivalence.py
       - tests/test_legacy_preprocessor.py
+
+  pipeline_d_preprocessing:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/preprocessing/materialize.py
+    status: verified
+    design: pipeline_a_composition_with_log_pz_fit_on_train_only
+    verification:
+      - tests/test_pipeline_d_materialization.py
+
+  isolated_log_energy_preprocessing:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/preprocessing/materialize.py
+    status: verified
+    design: pipeline_a_composition_with_only_energy_changed_to_natural_log
+    verification:
+      - tests/test_pipeline_d_materialization.py
+      - tests/test_preprocessing_equivalence.py
+
+  alternative_feature_contracts:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/reconstruction/drop_z_e.py
+    status: verified
+    design: drop_z_pz_mass_shell_reconstruction_and_full_8d_diagnostic
+    verification:
+      - tests/test_reconstruction.py
+      - tests/test_training_config_preflight.py
+
+  reference_noise_floor:
+    source: clean_nfs_design
+    destination: src/flashsim_nf/evaluation/noise_floor.py
+    status: adapted
+    design: validation_only_fluka_half_split_and_weighted_bootstrap_calibration
+    verification:
+      - tests/test_generated_evaluation.py
 
   restart_safe_training:
     source: src/flashsim/train.py

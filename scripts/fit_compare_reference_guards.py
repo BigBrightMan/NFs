@@ -79,7 +79,18 @@ def main() -> None:
         "lower_quantile": float(settings["lower_quantile"]),
         "upper_quantile": float(settings["upper_quantile"]),
     }
-    train_guard = fit_reference_guard(splits, fit_scope="train", **common)
+    # The observed-envelope policy is declared in the comparison settings so the
+    # artifact and the config can never disagree about whether the train envelope
+    # rejects. The all-clean envelope is production-only and always rejects.
+    train_action = str(
+        comparison_config["empirical_support"].get("train_action", "operational_reject")
+    )
+    train_guard = fit_reference_guard(
+        splits,
+        fit_scope="train",
+        empirical_support_action=train_action,
+        **common,
+    )
     all_guard = fit_reference_guard(splits, fit_scope="all_clean_splits", **common)
     generated = (
         load_generated_root(args.generated_root) if args.generated_root else None

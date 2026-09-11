@@ -152,8 +152,18 @@ def fit_reference_guard(
     iqr_multiplier: float = 3.0,
     lower_quantile: float = 0.0001,
     upper_quantile: float = 0.9999,
+    empirical_support_action: str = "operational_reject",
 ) -> dict[str, Any]:
-    """Fit a weighted catastrophic-tail guard with an immutable usage role."""
+    """Fit a weighted catastrophic-tail guard with an immutable usage role.
+
+    `empirical_support_action` decides whether the observed FLUKA min/max envelope
+    rejects rows or only records them. It is a scientific policy choice, recorded in
+    the artifact, not a safety property: leakage is controlled by `fit_scope`, and a
+    train-fitted envelope carries no validation or test information whichever action
+    it declares. The default rejects, which bounds generated support to the region
+    real FLUKA data actually covers. An all-clean-splits guard always rejects, since
+    it is production-only by construction.
+    """
 
     scopes = {
         "train": ("train",),
@@ -167,6 +177,10 @@ def fit_reference_guard(
         raise ValueError("iqr_multiplier must be finite and positive")
     if not 0.0 < lower_quantile < upper_quantile < 1.0:
         raise ValueError("Guard quantiles must satisfy 0 < lower < upper < 1")
+    if empirical_support_action not in {"operational_reject", "diagnostic_only"}:
+        raise ValueError(
+            "empirical_support_action must be 'operational_reject' or 'diagnostic_only'"
+        )
     source_splits = scopes[fit_scope]
     fitted = _concatenate(splits, source_splits)
     bounds: dict[str, Any] = {}
@@ -258,9 +272,10 @@ def fit_reference_guard(
             "source_splits": list(source_splits),
             "interpretation": "finite_sample_observed_envelope_not_physical_support",
             "action": (
-                "diagnostic_only"
-                if selection_allowed
-                else "operational_reject"
+                empirical_support_action if selection_allowed else "operational_reject"
+            ),
+            "action_source": (
+                "caller_policy" if selection_allowed else "production_only_scope"
             ),
             "selection_allowed": selection_allowed,
             "feature_bounds": empirical_support_bounds,

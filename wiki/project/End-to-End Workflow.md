@@ -29,6 +29,9 @@ Generated candidates are inverse transformed, deterministic `z` and `E` are reco
 
 Related pages: [[Dataset Registry]], [[Preprocessing Pipelines]], [[Model 4]], [[Validation Strategy]], [[Why Rejection Sampling]], and [[w1 and global_c]].
 
+Controlled extensions (FLUKA noise floor, Pipeline D, `drop_z_pz`, and the
+2025 full-8D diagnostic) are documented in [[Extended Model 4 Experiments]].
+
 The maintained implementation lives entirely in `flashsim_nf`: training and
 checkpointing, legacy A/B/C metadata adaptation, physical reconstruction,
 guarded generation, equal-weight exports, generated-validation metrics/plots,

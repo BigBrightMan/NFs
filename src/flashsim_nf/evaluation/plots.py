@@ -405,7 +405,8 @@ def write_generated_evaluation_plots(
     destination.mkdir(parents=True, exist_ok=False)
     title = (
         f"{context['year']} · {context['reference_split'].capitalize()} evaluation"
-        f" · Model 4 · Preprocess {context['preprocessing']} · drop_z_E"
+        f" · Model 4 · Preprocess {context['preprocessing']}"
+        f" · {context.get('ablation', 'unknown')}"
     )
     report["plot_context"] = {
         **context,

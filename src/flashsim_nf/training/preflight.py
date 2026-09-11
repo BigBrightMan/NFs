@@ -9,7 +9,11 @@ from typing import Any
 
 from ..config import config_hash, load_yaml
 from ..data import Model4RootAdapter, RootSplitSpec
-from ..experiments.training_config import sha256_file, training_identity
+from ..experiments.training_config import (
+    ABLATION_DROPS,
+    sha256_file,
+    training_identity,
+)
 from ..models.flows import FlowConfig
 from ..models.model4 import sample_weight_summary
 from ..naming import build_run_id
@@ -17,7 +21,6 @@ from .state import TrainingPolicy
 
 CANONICAL_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
 CANONICAL_9D = (*CANONICAL_8D, "w")
-MODEL4_DROP_ZE_FEATURES = ("x", "y", "pz", "px", "py", "t")
 
 
 class PreflightError(ValueError):
@@ -100,8 +103,10 @@ def preflight_model4_training(config_path: str | Path) -> dict[str, Any]:
     checks: list[str] = []
 
     dataset_id = str(dataset.get("dataset_id", ""))
-    if not dataset_id or not dataset.get("dataset_fingerprint") or not dataset.get(
-        "split_id"
+    if (
+        not dataset_id
+        or not dataset.get("dataset_fingerprint")
+        or not dataset.get("split_id")
     ):
         raise PreflightError("Dataset identity, fingerprint, and split ID are required")
     if int(dataset["year"]) == 2022 and dataset_id != "fluka2022_muons_down_tclean_v1":
@@ -132,12 +137,12 @@ def preflight_model4_training(config_path: str | Path) -> dict[str, Any]:
     checks.append("maintained_source_hashes")
 
     pipeline = str(preprocessing.get("id", "")).upper()
-    if pipeline not in {"A", "B", "C"}:
-        raise PreflightError("preprocessing.id must be A, B, or C")
+    if pipeline not in {"A", "B", "C", "D", "E"}:
+        raise PreflightError("preprocessing.id must be A, B, C, D, or E")
     if preprocessing.get("fit_split") != "train":
         raise PreflightError("Preprocessing artifact must be fit on train only")
     if preprocessing.get("dimension") != "8d":
-        raise PreflightError("Model 4 drop_ze requires the prepared 8d representation")
+        raise PreflightError("Model 4 requires the prepared 8d representation")
     artifact = _absolute_file(
         preprocessing.get("artifact"), name="preprocessor artifact"
     )
@@ -159,7 +164,13 @@ def preflight_model4_training(config_path: str | Path) -> dict[str, Any]:
         name="feature-order artifact",
     )
     metadata = _json(metadata_path, name="preprocessor metadata")
-    if metadata.get("pipeline") != pipeline or metadata.get("fitted") is not True:
+    composed = metadata.get("format") == "flashsim_nf.composed_preprocessor"
+    fitted = (
+        metadata.get("fitted_on") == "train"
+        if composed
+        else metadata.get("fitted") is True
+    )
+    if metadata.get("pipeline") != pipeline or not fitted:
         raise PreflightError(
             "Preprocessor metadata has wrong pipeline or is not fitted"
         )
@@ -167,8 +178,16 @@ def preflight_model4_training(config_path: str | Path) -> dict[str, Any]:
         raise PreflightError("Preprocessor metadata does not use canonical 9d order")
     if tuple(_json(feature_order_path, name="feature-order artifact")) != CANONICAL_8D:
         raise PreflightError("Prepared feature-order artifact is not canonical 8d")
-    if tuple(data.get("feature_order", ())) != MODEL4_DROP_ZE_FEATURES:
-        raise PreflightError("Model 4 drop_ze feature order is not canonical")
+    ablation = str(model.get("ablation", ""))
+    if ablation not in ABLATION_DROPS:
+        raise PreflightError(f"Unsupported Model 4 ablation: {ablation}")
+    expected_features = tuple(
+        name for name in CANONICAL_8D if name not in ABLATION_DROPS[ablation]
+    )
+    if tuple(data.get("feature_order", ())) != expected_features:
+        raise PreflightError(
+            f"Model 4 {ablation} feature order is not canonical: {expected_features}"
+        )
     checks.append("preprocessor_identity_and_feature_contract")
 
     manifest_path = _absolute_file(
@@ -185,9 +204,7 @@ def preflight_model4_training(config_path: str | Path) -> dict[str, Any]:
         raise PreflightError("Model 4 requires objective=weighted_nll")
     if model.get("weight_is_input_feature") is not False:
         raise PreflightError("FLUKA weight must not be an NF input feature")
-    if model.get("ablation") != "drop_ze":
-        raise PreflightError("This resolver currently supports only drop_ze")
-    flow = FlowConfig.from_mapping(model, input_dim=len(MODEL4_DROP_ZE_FEATURES))
+    flow = FlowConfig.from_mapping(model, input_dim=len(expected_features))
     checks.append("model_contract")
 
     TrainingPolicy.from_config(training)

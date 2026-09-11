@@ -1,4 +1,4 @@
-"""Composition-based definitions of FlashSim preprocessing A, B, and C."""
+"""Composition-based definitions of FlashSim preprocessing A through E."""
 
 from __future__ import annotations
 
@@ -169,16 +169,43 @@ def _pipeline_c(feature: str, *, energy_shift_gev: float) -> TransformChain:
     return _finish(Identity())
 
 
+def _pipeline_d(feature: str, *, logit_epsilon: float) -> TransformChain:
+    """Pipeline A with both energy variables changed from Box-Cox to natural log.
+
+    Model 4 trains on `pz` under `drop_ze` and on `E` under `drop_z_pz`, never on
+    both, so changing the pair still leaves exactly one trained feature differing
+    from Pipeline A in either ablation. That keeps each comparison a single-variable
+    experiment while needing only one fitted pipeline instead of two.
+    """
+
+    if feature in {"E", "pz"}:
+        return _finish(PositiveLog())
+    return _pipeline_a(feature, logit_epsilon=logit_epsilon)
+
+
+def _pipeline_e(feature: str, *, logit_epsilon: float) -> TransformChain:
+    """Pipeline A with only energy changed from Box-Cox to natural log.
+
+    Redundant with Pipeline D: under `drop_z_pz`, the only ablation that trains on
+    `E`, D and E produce identical model-space data because `pz` is dropped. Kept so
+    existing references stay resolvable; prefer D for new experiments.
+    """
+
+    if feature == "E":
+        return _finish(PositiveLog())
+    return _pipeline_a(feature, logit_epsilon=logit_epsilon)
+
+
 def build_preprocessor(
     name: str,
     feature_order: list[str] | tuple[str, ...],
     config: dict[str, Any] | None = None,
 ) -> FeaturePreprocessor:
-    """Construct A/B/C by composing feature-level transform components."""
+    """Construct A/B/C/D/E by composing feature-level transform components."""
 
     pipeline = str(name).upper()
-    if pipeline not in {"A", "B", "C"}:
-        raise ValueError("preprocessing must be A, B, or C")
+    if pipeline not in {"A", "B", "C", "D", "E"}:
+        raise ValueError("preprocessing must be A, B, C, D, or E")
     features = _validate_features(feature_order)
     options = dict(config or {})
     epsilon = float(options.get("logit_epsilon", 1.0e-6))
@@ -187,6 +214,8 @@ def build_preprocessor(
         "A": lambda feature: _pipeline_a(feature, logit_epsilon=epsilon),
         "B": _pipeline_b,
         "C": lambda feature: _pipeline_c(feature, energy_shift_gev=energy_shift),
+        "D": lambda feature: _pipeline_d(feature, logit_epsilon=epsilon),
+        "E": lambda feature: _pipeline_e(feature, logit_epsilon=epsilon),
     }
     build = builders[pipeline]
     return FeaturePreprocessor(

@@ -860,8 +860,14 @@ def evaluate_generated_root_files(
     tree_name: str = "nt",
     generated_weight_mode: str = "auto",
     settings: EvaluationSettings | None = None,
+    write_plots: bool = True,
 ) -> dict[str, Any]:
-    """Load physical ROOT files, evaluate them, and write one immutable report."""
+    """Load physical ROOT files, evaluate them, and write one immutable report.
+
+    `write_plots=False` produces metrics and the bulk/tail table only. Use it for
+    diagnostic comparisons where the figures are not the deliverable; the numbers in
+    `generated_evaluation.json` are identical either way.
+    """
 
     if reference_split not in {"validation", "test"}:
         raise ValueError("reference_split must be validation or test")
@@ -921,29 +927,44 @@ def evaluate_generated_root_files(
         if generation_manifest_path.is_file()
         else {}
     )
+    # Propagate the generation-side policy flag. A sample produced under the all-clean
+    # guard carries validation and test information in its rejection boundary, so its
+    # metrics are a diagnostic and must not enter winner selection.
+    if "selection_allowed" in generation_manifest:
+        report["selection_allowed"] = bool(generation_manifest["selection_allowed"])
+        report["generation_purpose"] = generation_manifest.get("generation", {}).get(
+            "purpose"
+        )
     partial = destination.with_name(f".{destination.name}.partial.{os.getpid()}")
     if partial.exists():
         raise FileExistsError(partial)
     try:
-        temporary_plots = write_generated_evaluation_plots(
-            train=train,
-            reference=reference,
-            generated=generated,
-            train_weights=train_weights,
-            reference_weights=reference_weights,
-            generated_weights=generated_weights,
-            report=report,
-            output_directory=partial,
-            context={
-                "year": generation_manifest.get("dataset", {}).get("year", "Unknown"),
-                "preprocessing": generation_manifest.get("preprocessing", "?"),
-                "reference_split": reference_split,
-            },
-        )
-        report["plots"] = [
-            str((destination / Path(path).relative_to(partial)).resolve())
-            for path in temporary_plots
-        ]
+        if write_plots:
+            temporary_plots = write_generated_evaluation_plots(
+                train=train,
+                reference=reference,
+                generated=generated,
+                train_weights=train_weights,
+                reference_weights=reference_weights,
+                generated_weights=generated_weights,
+                report=report,
+                output_directory=partial,
+                context={
+                    "year": generation_manifest.get("dataset", {}).get(
+                        "year", "Unknown"
+                    ),
+                    "preprocessing": generation_manifest.get("preprocessing", "?"),
+                    "ablation": generation_manifest.get("ablation", "unknown"),
+                    "reference_split": reference_split,
+                },
+            )
+            report["plots"] = [
+                str((destination / Path(path).relative_to(partial)).resolve())
+                for path in temporary_plots
+            ]
+        else:
+            report["plots"] = []
+            report["plots_skipped"] = True
         _write_bulk_tail_table(partial / "bulk_tail_metrics.csv", evaluation)
         report["tables"] = {
             "bulk_tail_metrics": str(

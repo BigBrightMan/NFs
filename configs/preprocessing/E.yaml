@@ -1,0 +1,10 @@
+preprocessing_id: E
+display_name: Pipeline A with log energy
+fit_split: train
+transforms:
+  spatial: minmax_logit
+  transverse_momentum: signed_log1p
+  energy: natural_log
+  longitudinal_momentum: box_cox
+  time: identity
+  final: standardize

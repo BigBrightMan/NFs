@@ -146,6 +146,30 @@ def test_smoke_stage_defaults_to_five_epochs(tmp_path: Path) -> None:
     assert config["training"]["maximum_epochs"] == 5
 
 
+@pytest.mark.parametrize(
+    ("ablation", "expected"),
+    [
+        ("drop_z_pz", ["x", "y", "E", "px", "py", "t"]),
+        ("none", CANONICAL_8D),
+    ],
+)
+def test_resolver_supports_alternative_ablation_feature_orders(
+    tmp_path: Path, ablation: str, expected: list[str]
+) -> None:
+    dataset, prepared, outputs = _fixture(tmp_path)
+    config = resolve_model4_training_config(
+        project_root=PROJECT,
+        dataset_config=dataset,
+        prepared_directory=prepared,
+        output_root=outputs,
+        preprocessing="B",
+        ablation=ablation,
+        stage="smoke",
+    )
+    assert config["model"]["ablation"] == ablation
+    assert config["data"]["feature_order"] == expected
+
+
 def test_2022_resolver_requires_tclean_identity(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset.yaml"
     dataset.write_text(

@@ -5,6 +5,8 @@ from .drop_z_e import (
     ScoringPlane,
     fit_scoring_plane,
     reconstruct_drop_z_e,
+    reconstruct_drop_z_pz,
+    reconstruct_full_8d,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "ScoringPlane",
     "fit_scoring_plane",
     "reconstruct_drop_z_e",
+    "reconstruct_drop_z_pz",
+    "reconstruct_full_8d",
 ]

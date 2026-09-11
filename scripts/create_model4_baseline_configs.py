@@ -19,6 +19,10 @@ def main() -> None:
     parser.add_argument("--config-output-directory", required=True)
     parser.add_argument("--stage", choices=("smoke", "production"), default="smoke")
     parser.add_argument("--pipelines", nargs="+", default=["A", "B", "C"])
+    parser.add_argument(
+        "--ablation", choices=("drop_ze", "drop_z_pz", "none"), default="drop_ze"
+    )
+    parser.add_argument("--preprocessing-data-root")
     parser.add_argument("--dataset-ids", nargs="+")
     parser.add_argument("--training-seed", type=int, default=42)
     parser.add_argument("--skip-existing", action="store_true")
@@ -31,6 +35,8 @@ def main() -> None:
         environment=args.environment,
         stage=args.stage,
         pipelines=args.pipelines,
+        ablation=args.ablation,
+        preprocessing_data_root=args.preprocessing_data_root,
         dataset_ids=args.dataset_ids,
         training_seed=args.training_seed,
         skip_existing=args.skip_existing,
