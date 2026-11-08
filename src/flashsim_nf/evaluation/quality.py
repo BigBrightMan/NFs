@@ -7,7 +7,9 @@ from typing import Any
 import numpy as np
 
 
-def selection_metrics(evaluation: dict[str, Any]) -> dict[str, float]:
+def selection_metrics(
+    evaluation: dict[str, Any], *, include_c2st: bool = True
+) -> dict[str, float]:
     """Extract the lower-is-better scalars used by validation selection."""
 
     global_metrics = evaluation["global_multivariate"]
@@ -27,7 +29,7 @@ def selection_metrics(evaluation: dict[str, Any]) -> dict[str, float]:
                 tail_mass_errors.append(abs(float(np.log10(ratio))))
     if not tail_mass_errors:
         raise ValueError("No statistically sufficient q0.99 tail metric is available")
-    return {
+    metrics = {
         "frechet_gaussian_distance": float(global_metrics["frechet_gaussian_distance"]),
         "energy_distance": float(
             global_metrics["energy_distance"]["mean_clipped_nonnegative"]
@@ -56,9 +58,6 @@ def selection_metrics(evaluation: dict[str, Any]) -> dict[str, float]:
             )
         ),
         "mean_q99_tail_absolute_log10_mass_ratio": float(np.mean(tail_mass_errors)),
-        "c2st_distance_from_half": float(
-            global_metrics["c2st"]["distance_from_ideal_half"]
-        ),
         "pearson_mean_absolute_difference": float(
             evaluation["correlations"]["pearson"]["mean_absolute_difference"]
         ),
@@ -66,3 +65,8 @@ def selection_metrics(evaluation: dict[str, Any]) -> dict[str, float]:
             evaluation["correlations"]["spearman"]["mean_absolute_difference"]
         ),
     }
+    if include_c2st:
+        metrics["c2st_distance_from_half"] = float(
+            global_metrics["c2st"]["distance_from_ideal_half"]
+        )
+    return metrics

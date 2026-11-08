@@ -38,15 +38,31 @@ def test_noise_floor_is_validation_only_and_row_matched(
     _write_reference(train, 30)
     _write_reference(validation, 20)
 
+    c2st_calls = []
+
+    def fake_evaluation(**values):
+        c2st_calls.append(values.get("include_c2st", True))
+        return {
+            "rows": len(values["reference"]),
+            "global_multivariate": {
+                "c2st": {
+                    "roc_auc": 0.51,
+                    "roc_auc_sd": 0.02,
+                    "repeats": 5,
+                    "rows_per_class": 9,
+                }
+            },
+        }
+
     monkeypatch.setattr(
-        noise_floor,
-        "evaluate_generated_arrays",
-        lambda **values: {"rows": len(values["reference"])},
+        noise_floor, "evaluate_generated_arrays", fake_evaluation
     )
     monkeypatch.setattr(
         noise_floor,
         "_noise_metrics",
-        lambda evaluation: {"synthetic_distance": float(evaluation["rows"])},
+        lambda evaluation, **_: {
+            "synthetic_distance": float(evaluation["rows"])
+        },
     )
     report = noise_floor.compute_reference_noise_floor(
         dataset_id="fluka2025_test",
@@ -56,6 +72,14 @@ def test_noise_floor_is_validation_only_and_row_matched(
         repeats=3,
     )
     assert report["test_data_used"] is False
+    assert report["format_version"] == 2
     assert report["method"]["rows_per_sample"] == 20
     assert len(report["bootstrap"]["raw_metrics"]) == 3
+    assert all(
+        "c2st_distance_from_half" not in record
+        for record in report["bootstrap"]["raw_metrics"]
+    )
+    assert report["c2st_floor"]["method"] == "disjoint_stable_halves_by_source_point"
+    assert report["c2st_floor"]["roc_auc"] == 0.51
+    assert c2st_calls == [True, False, False, False]
     assert output.is_file()

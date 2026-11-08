@@ -22,10 +22,10 @@ def main() -> None:
         payload = json.loads(path.read_text())
         if (
             payload.get("format") != "flashsim_nf.generated_evaluation"
-            or payload.get("format_version") != 3
+            or payload.get("format_version") not in {3, 4}
         ):
             raise ValueError(
-                f"Unsupported evaluation metric contract (need version 3): {path}"
+                f"Unsupported evaluation metric contract (need version 3 or 4): {path}"
             )
         if payload.get("status") != "complete":
             raise ValueError(f"Incomplete evaluation: {path}")

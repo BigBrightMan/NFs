@@ -20,7 +20,7 @@ from .plots import write_generated_evaluation_plots
 
 FEATURES_8D = ("x", "y", "z", "E", "pz", "px", "py", "t")
 EVALUATION_FORMAT = "flashsim_nf.generated_evaluation"
-EVALUATION_FORMAT_VERSION = 3
+EVALUATION_FORMAT_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,7 @@ class EvaluationSettings:
     minimum_tail_ess: float = 20.0
     random_seed: int = 1556
     c2st_max_rows_per_class: int = 50_000
+    c2st_repeats: int = 5
 
     def __post_init__(self) -> None:
         if not self.tail_quantiles or any(
@@ -55,6 +56,8 @@ class EvaluationSettings:
             raise ValueError("Monte Carlo evaluation settings must be positive")
         if self.minimum_tail_ess <= 0:
             raise ValueError("minimum_tail_ess must be positive")
+        if self.c2st_repeats < 2:
+            raise ValueError("c2st_repeats must be at least two")
 
 
 def _validate(values: np.ndarray, weights: np.ndarray, *, name: str) -> None:
@@ -197,6 +200,37 @@ def _correlation_metrics(
     }
 
 
+def _c2st_train_test_indices(
+    reference_indices: np.ndarray,
+    generated_indices: np.ndarray,
+    *,
+    reference_rows: int,
+    random_seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Split resampled rows while keeping each source point in one fold."""
+
+    try:
+        from sklearn.model_selection import GroupShuffleSplit
+    except ImportError as error:  # pragma: no cover
+        raise RuntimeError("C2ST evaluation requires scikit-learn") from error
+    labels = np.concatenate(
+        [np.zeros(len(reference_indices)), np.ones(len(generated_indices))]
+    )
+    groups = np.concatenate(
+        [reference_indices, generated_indices + reference_rows]
+    )
+    train_indices, test_indices = next(
+        GroupShuffleSplit(
+            n_splits=1,
+            test_size=0.3,
+            random_state=random_seed,
+        ).split(np.empty((len(labels), 0)), labels, groups)
+    )
+    if len(np.unique(labels[test_indices])) != 2:
+        raise ValueError("C2ST test fold must contain both classes")
+    return train_indices, test_indices
+
+
 def _c2st(
     reference: np.ndarray,
     generated: np.ndarray,
@@ -204,53 +238,62 @@ def _c2st(
     generated_weights: np.ndarray,
     settings: EvaluationSettings,
 ) -> dict[str, Any]:
+    """Run C2ST; reference and generated must not share source points."""
+
     try:
         from sklearn.ensemble import HistGradientBoostingClassifier
         from sklearn.metrics import roc_auc_score
-        from sklearn.model_selection import train_test_split
     except ImportError as error:  # pragma: no cover
         raise RuntimeError("C2ST evaluation requires scikit-learn") from error
-    rng = np.random.default_rng(settings.random_seed + 2)
     rows = min(len(reference), len(generated), settings.c2st_max_rows_per_class)
-    reference_indices = rng.choice(
-        len(reference),
-        size=rows,
-        replace=True,
-        p=reference_weights / reference_weights.sum(),
-    )
-    generated_indices = rng.choice(
-        len(generated),
-        size=rows,
-        replace=True,
-        p=generated_weights / generated_weights.sum(),
-    )
-    values = np.vstack([reference[reference_indices], generated[generated_indices]])
-    labels = np.concatenate([np.zeros(rows), np.ones(rows)])
-    indices = np.arange(len(values))
-    train_indices, test_indices = train_test_split(
-        indices,
-        test_size=0.3,
-        random_state=settings.random_seed + 2,
-        stratify=labels,
-    )
-    classifier = HistGradientBoostingClassifier(
-        max_iter=100,
-        max_leaf_nodes=31,
-        learning_rate=0.1,
-        random_state=settings.random_seed + 2,
-    )
-    classifier.fit(
-        values[train_indices],
-        labels[train_indices],
-    )
-    probability = classifier.predict_proba(values[test_indices])[:, 1]
-    auc = float(roc_auc_score(labels[test_indices], probability))
+    repeat_auc = []
+    for repeat in range(settings.c2st_repeats):
+        repeat_seed = settings.random_seed + 2 + repeat
+        rng = np.random.default_rng(repeat_seed)
+        reference_indices = rng.choice(
+            len(reference),
+            size=rows,
+            replace=True,
+            p=reference_weights / reference_weights.sum(),
+        )
+        generated_indices = rng.choice(
+            len(generated),
+            size=rows,
+            replace=True,
+            p=generated_weights / generated_weights.sum(),
+        )
+        values = np.vstack(
+            [reference[reference_indices], generated[generated_indices]]
+        )
+        labels = np.concatenate([np.zeros(rows), np.ones(rows)])
+        train_indices, test_indices = _c2st_train_test_indices(
+            reference_indices,
+            generated_indices,
+            reference_rows=len(reference),
+            random_seed=repeat_seed,
+        )
+        classifier = HistGradientBoostingClassifier(
+            max_iter=100,
+            max_leaf_nodes=31,
+            learning_rate=0.1,
+            random_state=repeat_seed,
+        )
+        classifier.fit(values[train_indices], labels[train_indices])
+        probability = classifier.predict_proba(values[test_indices])[:, 1]
+        repeat_auc.append(
+            float(roc_auc_score(labels[test_indices], probability))
+        )
+    auc = float(np.mean(repeat_auc))
     return {
-        "classifier": "weighted_hist_gradient_boosting",
+        "classifier": "hist_gradient_boosting_on_weight_resampled_rows",
         "rows_per_class": rows,
         "sampling": "weighted_resampling_with_replacement",
+        "split": "by_source_point",
         "test_fraction": 0.3,
+        "repeats": settings.c2st_repeats,
         "roc_auc": auc,
+        "roc_auc_sd": float(np.std(repeat_auc, ddof=1)),
+        "repeat_roc_auc": repeat_auc,
         "distance_from_ideal_half": abs(auc - 0.5),
         "interpretation": "0.5 is indistinguishable; larger separation is worse",
     }
@@ -620,6 +663,7 @@ def evaluate_generated_arrays(
     reference_weights: np.ndarray,
     generated_weights: np.ndarray,
     settings: EvaluationSettings,
+    include_c2st: bool = True,
 ) -> dict[str, Any]:
     """Evaluate generated and reference samples with train-defined scales/tails."""
 
@@ -702,12 +746,18 @@ def evaluate_generated_arrays(
                 generated_weights,
                 settings,
             ),
-            "c2st": _c2st(
-                standardized_reference,
-                standardized_generated,
-                reference_weights,
-                generated_weights,
-                settings,
+            **(
+                {
+                    "c2st": _c2st(
+                        standardized_reference,
+                        standardized_generated,
+                        reference_weights,
+                        generated_weights,
+                        settings,
+                    )
+                }
+                if include_c2st
+                else {}
             ),
         },
         "correlations": _correlation_metrics(

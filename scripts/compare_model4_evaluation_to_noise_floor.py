@@ -21,6 +21,11 @@ def main() -> None:
     floor_path = Path(args.noise_floor).resolve()
     payload = json.loads(evaluation_path.read_text())
     floor = json.loads(floor_path.read_text())
+    if (
+        floor.get("format") != "flashsim_nf.reference_noise_floor"
+        or floor.get("format_version") not in {1, 2}
+    ):
+        raise ValueError("Unsupported reference noise-floor contract")
     if payload.get("reference_split") != "validation":
         raise ValueError("Noise-floor comparison is for validation evaluation only")
     if payload.get("dataset_id") != floor.get("dataset_id"):
@@ -28,6 +33,17 @@ def main() -> None:
     scores = selection_metrics(payload["evaluation"])
     comparison = {}
     for name, value in scores.items():
+        if name == "c2st_distance_from_half" and "c2st_floor" in floor:
+            c2st_floor = floor["c2st_floor"]
+            floor_distance = abs(float(c2st_floor["roc_auc"]) - 0.5)
+            comparison[name] = {
+                "model": value,
+                "reference_noise_roc_auc": float(c2st_floor["roc_auc"]),
+                "reference_noise_roc_auc_sd": float(c2st_floor["roc_auc_sd"]),
+                "reference_noise_distance_from_half": floor_distance,
+                "model_minus_reference_noise_distance": value - floor_distance,
+            }
+            continue
         q95 = float(floor["bootstrap"]["summary"][name]["q95"])
         comparison[name] = {
             "model": value,

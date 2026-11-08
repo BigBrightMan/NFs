@@ -56,8 +56,10 @@ def _summary(records: list[dict[str, float]]) -> dict[str, Any]:
     return result
 
 
-def _noise_metrics(evaluation: dict[str, Any]) -> dict[str, float]:
-    metrics = selection_metrics(evaluation)
+def _noise_metrics(
+    evaluation: dict[str, Any], *, include_c2st: bool = True
+) -> dict[str, float]:
+    metrics = selection_metrics(evaluation, include_c2st=include_c2st)
     metrics["covariance_frobenius_distance"] = float(
         evaluation["global_multivariate"]["covariance_frobenius_distance"]
     )
@@ -111,17 +113,18 @@ def compute_reference_noise_floor(
         evaluation = evaluate_generated_arrays(
             train=train,
             reference=validation[left],
+            include_c2st=False,
             generated=validation[right],
             train_weights=train_weights,
             reference_weights=uniform,
             generated_weights=uniform,
             settings=EvaluationSettings(random_seed=random_seed + repeat + 1),
         )
-        repeated.append(_noise_metrics(evaluation))
+        repeated.append(_noise_metrics(evaluation, include_c2st=False))
     report = {
         "status": "complete",
         "format": "flashsim_nf.reference_noise_floor",
-        "format_version": 1,
+        "format_version": 2,
         "dataset_id": dataset_id,
         "reference_split": "validation",
         "test_data_used": False,
@@ -140,6 +143,15 @@ def compute_reference_noise_floor(
             "rows_a": int(half.sum()),
             "rows_b": int((~half).sum()),
             "metrics": _noise_metrics(half_evaluation),
+        },
+        "c2st_floor": {
+            "method": "disjoint_stable_halves_by_source_point",
+            "roc_auc": half_evaluation["global_multivariate"]["c2st"]["roc_auc"],
+            "roc_auc_sd": half_evaluation["global_multivariate"]["c2st"]["roc_auc_sd"],
+            "repeats": half_evaluation["global_multivariate"]["c2st"]["repeats"],
+            "rows_per_class": half_evaluation["global_multivariate"]["c2st"][
+                "rows_per_class"
+            ],
         },
         "bootstrap": {"summary": _summary(repeated), "raw_metrics": repeated},
     }

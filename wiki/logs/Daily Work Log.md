@@ -6,6 +6,10 @@ The technical facts for an individual experiment still belong in its run-local `
 
 ## 2026
 
+### November
+
+- [[2026-11-05]] — Fix C2ST source-point leakage
+
 ### September
 
 - [[2026-09-11]] — Separate physical constraints from empirical support envelopes

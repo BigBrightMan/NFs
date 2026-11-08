@@ -3,14 +3,118 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import uproot
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
 
 from flashsim_nf.evaluation.generated import (
     EvaluationSettings,
+    _c2st,
+    _c2st_train_test_indices,
     evaluate_generated_arrays,
     evaluate_generated_root_files,
     weighted_midrank,
     weighted_spearman_correlation,
 )
+
+
+def test_c2st_source_point_split_has_disjoint_groups() -> None:
+    reference_indices = np.array([0, 0, 1, 2, 2, 3])
+    generated_indices = np.array([1, 1, 2, 4, 4, 5])
+    train_indices, test_indices = _c2st_train_test_indices(
+        reference_indices,
+        generated_indices,
+        reference_rows=10,
+        random_seed=11,
+    )
+    groups = np.concatenate([reference_indices, generated_indices + 10])
+    assert set(groups[train_indices]).isdisjoint(groups[test_indices])
+
+
+def test_c2st_point_split_removes_duplicate_row_leakage() -> None:
+    rows = 800
+    rng = np.random.default_rng(123)
+    reference = rng.normal(size=(rows, 8))
+    generated = rng.normal(size=(rows, 8))
+    reference_weights = np.exp(rng.normal(size=rows))
+    generated_weights = np.exp(rng.normal(size=rows))
+    seed = 44
+    draw_rng = np.random.default_rng(seed)
+    reference_indices = draw_rng.choice(
+        rows,
+        size=rows,
+        replace=True,
+        p=reference_weights / reference_weights.sum(),
+    )
+    generated_indices = draw_rng.choice(
+        rows,
+        size=rows,
+        replace=True,
+        p=generated_weights / generated_weights.sum(),
+    )
+    values = np.vstack(
+        [reference[reference_indices], generated[generated_indices]]
+    )
+    labels = np.concatenate([np.zeros(rows), np.ones(rows)])
+    train_indices, test_indices = train_test_split(
+        np.arange(2 * rows),
+        test_size=0.3,
+        random_state=seed,
+        stratify=labels,
+    )
+    classifier = HistGradientBoostingClassifier(
+        max_iter=100,
+        max_leaf_nodes=31,
+        learning_rate=0.1,
+        random_state=seed,
+    )
+    classifier.fit(values[train_indices], labels[train_indices])
+    row_split_auc = roc_auc_score(
+        labels[test_indices],
+        classifier.predict_proba(values[test_indices])[:, 1],
+    )
+    point_split = _c2st(
+        reference,
+        generated,
+        reference_weights,
+        generated_weights,
+        EvaluationSettings(
+            random_seed=42,
+            c2st_repeats=5,
+            c2st_max_rows_per_class=rows,
+        ),
+    )
+    assert row_split_auc > 0.6
+    assert abs(point_split["roc_auc"] - 0.5) < 0.05
+
+
+def test_c2st_has_power_and_is_deterministic() -> None:
+    rng = np.random.default_rng(9)
+    reference = rng.normal(size=(300, 8))
+    generated = rng.normal(loc=0.8, size=(300, 8))
+    weights = np.ones(300)
+    settings = EvaluationSettings(
+        random_seed=19,
+        c2st_repeats=3,
+        c2st_max_rows_per_class=300,
+    )
+    first = _c2st(reference, generated, weights, weights, settings)
+    second = _c2st(reference, generated, weights, weights, settings)
+    assert first == second
+    assert first["roc_auc"] > 0.7
+    assert set(first) == {
+        "classifier",
+        "rows_per_class",
+        "sampling",
+        "split",
+        "test_fraction",
+        "repeats",
+        "roc_auc",
+        "roc_auc_sd",
+        "repeat_roc_auc",
+        "distance_from_ideal_half",
+        "interpretation",
+    }
 
 
 def _settings() -> EvaluationSettings:
@@ -145,7 +249,7 @@ def test_root_evaluation_requires_fluka_weights_and_writes_immutable_report(
         settings=_settings(),
     )
     assert report["format"] == "flashsim_nf.generated_evaluation"
-    assert report["format_version"] == 3
+    assert report["format_version"] == 4
     assert report["inputs"]["weight_sources"]["reference"] == "ROOT branch w"
     assert report["inputs"]["weight_sources"]["generated"] == "uniform"
     assert (output / "generated_evaluation.json").is_file()
